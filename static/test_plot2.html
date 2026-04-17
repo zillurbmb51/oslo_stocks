@@ -1,0 +1,258 @@
+<script>
+  const API_BASE = window.location.origin;
+  const tickerSelect = document.getElementById("ticker-select");
+  const chartDiv = document.getElementById("chart");
+  const commentaryDiv = document.getElementById("commentary");
+
+  function getColor(idx) {
+    const palette = [
+      "#38bdf8", "#f97316", "#22c55e", "#eab308", "#a855f7",
+      "#ec4899", "#14b8a6", "#4ade80", "#facc15", "#ef4444"
+    ];
+    return palette[idx % palette.length];
+  }
+
+  async function fetchJSON(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error("HTTP " + resp.status + " " + resp.statusText + " for " + url);
+    }
+    return resp.json();
+  }
+
+  // From your segments <ref: index={3389046} firstWord={109} lastWord={166}/><ref: index={3389044} firstWord={1} lastWord={21}/>
+  function horizonToDaysFromToday(h) {
+    if (h === null || h === undefined) return 0;
+    if (typeof h === "number") return h;
+
+    const s = String(h).trim().toLowerCase();
+    if (!s) return 0;
+
+    if (s.endsWith("h")) {
+      const hours = parseFloat(s.slice(0, -1)) || 0;
+      return Math.round(hours / 24); // 24h -> 1, 48h -> 2
+    }
+    if (s.endsWith("w")) {
+      const weeks = parseFloat(s.slice(0, -1)) || 0;
+      return weeks * 7;
+    }
+    if (s.endsWith("m")) {
+      const months = parseFloat(s.slice(0, -1)) || 0;
+      return months * 30;
+    }
+    if (s.endsWith("y")) {
+      const years = parseFloat(s.slice(0, -1)) || 0;
+      return years * 365;
+    }
+    return 0;
+  }
+
+  function horizonLabelsToDates(horizons) {
+    const today = new Date();
+    return horizons.map((h) => {
+      const d = new Date(today);
+      const days = horizonToDaysFromToday(h);
+      d.setDate(today.getDate() + days);
+      return d.toISOString().slice(0, 10); // YYYY-MM-DD
+    });
+  }
+
+  async function loadTickers() {
+    try {
+      const data = await fetchJSON(API_BASE + "/api/tickers");
+      tickerSelect.innerHTML = "";
+      (data.tickers || []).forEach((t) => {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        tickerSelect.appendChild(opt);
+      });
+      if (data.tickers && data.tickers.length > 0) {
+        await updateTicker(data.tickers[0]);
+      } else {
+        commentaryDiv.textContent = "No tickers available.";
+      }
+    } catch (err) {
+      console.error(err);
+      commentaryDiv.textContent = "Error loading tickers from backend.";
+    }
+  }
+
+  // NEW: use index-based x (0..N-1) so data fills the entire plot area
+  async function updateChart(ticker) {
+    const [fc, hist] = await Promise.all([
+      fetchJSON(API_BASE + "/api/forecast/" + ticker),
+      fetch(API_BASE + "/api/history/" + ticker)
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+
+    const traces = [];
+
+    // --- 1) Collect history data <ref: index={3389044} firstWord={42} lastWord={69}/> ---
+    let historyDates = [];
+    let historyValues = [];
+    if (hist && Array.isArray(hist.dates) && hist.dates.length > 0) {
+      historyDates = hist.dates.slice();
+      historyValues = hist.closes.slice();
+    }
+
+    // --- 2) Collect forecast runs, convert horizons to dates <ref: index={3389048} firstWord={1} lastWord={24}/> ---
+    const forecastRuns = [];
+    (fc.runs || []).forEach((r, i) => {
+      const horizons = r.horizons || [];
+      const values = r.values || []; // FIX: || instead of | [] from the segment
+      if (!Array.isArray(horizons) || !Array.isArray(values)) return;
+      if (horizons.length === 0 || values.length === 0) return;
+      if (horizons.length !== values.length) {
+        console.warn("Horizon/value length mismatch for", ticker, "run", r.run_index ?? i);
+        return;
+      }
+
+      const dates = horizonLabelsToDates(horizons);
+      forecastRuns.push({
+        runIndex: r.run_index ?? i,
+        dates,
+        values,
+      });
+    });
+
+    // --- 3) Build sorted list of all distinct dates (history + forecasts) ---
+    const allDateSet = new Set();
+    historyDates.forEach(d => allDateSet.add(d));
+    forecastRuns.forEach(run => {
+      run.dates.forEach(d => allDateSet.add(d));
+    });
+
+    const allDates = Array.from(allDateSet);
+    allDates.sort((a, b) => new Date(a) - new Date(b));
+
+    if (allDates.length === 0) {
+      // no data at all
+      Plotly.react(chartDiv, [], {
+        title: "Forecast – " + (fc.ticker || ticker),
+        paper_bgcolor: "#020617",
+        plot_bgcolor: "#020617",
+        font: { color: "#e5e7eb" },
+      }, { responsive: true });
+      return;
+    }
+
+    // Map date -> index 0..N-1
+    const dateToIndex = new Map();
+    allDates.forEach((d, idx) => dateToIndex.set(d, idx));
+    const N = allDates.length;
+
+    // --- 4) Build traces with indices as x, like in the working test plot ---
+
+    // History trace
+    if (historyDates.length > 0) {
+      const xIdx = historyDates.map(d => dateToIndex.get(d));
+      traces.push({
+        x: xIdx,
+        y: historyValues,
+        mode: "lines",
+        name: "history",
+        line: { color: "#9ca3af", width: 2 },
+      });
+    }
+
+    // Forecast traces (one per run)
+    forecastRuns.forEach((run, i) => {
+      const xIdx = run.dates.map(d => dateToIndex.get(d));
+      traces.push({
+        x: xIdx,
+        y: run.values,
+        mode: "lines+markers",
+        name: "run " + run.runIndex,
+        line: {
+          color: getColor(i),
+          width: 2,
+          dash: i % 2 === 0 ? "solid" : "dash",
+        },
+        marker: { color: getColor(i), size: 6 },
+      });
+    });
+
+    // --- 5) Build tick labels using real dates, but keep numeric x <ref: index={3399963} firstWord={45} lastWord={60}/> ---
+    const tickvals = [];
+    const ticktext = [];
+    const maxTicks = 12;
+    const step = Math.max(1, Math.floor(N / maxTicks));
+    for (let i = 0; i < N; i += step) {
+      tickvals.push(i);
+      ticktext.push(allDates[i]);
+    }
+    if (tickvals[tickvals.length - 1] !== N - 1) {
+      tickvals.push(N - 1);
+      ticktext.push(allDates[N - 1]);
+    }
+
+    const layout = {
+      title: "Forecast – " + (fc.ticker || ticker),
+      paper_bgcolor: "#020617",
+      plot_bgcolor: "#020617",
+      font: { color: "#e5e7eb" },
+      xaxis: {
+        title: "Date",
+        type: "linear",          // IMPORTANT: numeric axis like the test that worked
+        gridcolor: "#1f2937",
+        range: [0, N - 1],       // fill entire width from first index to last
+        tickmode: "array",
+        tickvals: tickvals,
+        ticktext: ticktext,
+      },
+      yaxis: {
+        title: "Price",
+        gridcolor: "#1f2937",
+      },
+      margin: { l: 60, r: 20, t: 60, b: 60 },
+      legend: {
+        orientation: "h",
+        yanchor: "bottom",
+        y: 1.02,
+        xanchor: "left",
+        x: 0,
+      },
+    };
+
+    Plotly.react(chartDiv, traces, layout, { responsive: true });
+  }
+
+  async function updateCommentary(ticker) {
+    commentaryDiv.textContent = "Loading commentary for " + ticker + "…";
+    const resp = await fetch(API_BASE + "/api/commentary/" + ticker);
+    if (!resp.ok) {
+      commentaryDiv.textContent = "No commentary available for " + ticker + ".";
+      return;
+    }
+    const data = await resp.json();
+    commentaryDiv.innerHTML = "";
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "ticker-label";
+    titleSpan.textContent = data.ticker + " commentary";
+    const textNode = document.createElement("pre");
+    textNode.style.marginTop = "0.5rem";
+    textNode.style.whiteSpace = "pre-wrap";
+    textNode.textContent = data.commentary;
+    commentaryDiv.appendChild(titleSpan);
+    commentaryDiv.appendChild(document.createElement("br"));
+    commentaryDiv.appendChild(document.createElement("br"));
+    commentaryDiv.appendChild(textNode);
+  }
+
+  async function updateTicker(ticker) {
+    await updateChart(ticker);
+    await updateCommentary(ticker);
+  }
+
+  tickerSelect.addEventListener("change", async (e) => {
+    const ticker = e.target.value;
+    if (ticker) {
+      await updateTicker(ticker);
+    }
+  });
+
+  loadTickers();
+</script>
+

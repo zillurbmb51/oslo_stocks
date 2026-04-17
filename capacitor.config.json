@@ -1,0 +1,6 @@
+{
+  "appId": "com.mystocks.osl",
+  "appName": "MyStocks OSL",
+  "webDir": "static",
+  "bundledWebRuntime": false
+}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Full‑width Plot Test</title>
+  <script src="https://cdn.plot.ly/plotly-2.29.1.min.js"></script>
+  <style>
+    body {
+      background: #020617;
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 20px auto;
+      padding: 0 16px;
+    }
+    #chart {
+      width: 100%;
+      height: 450px; /* big enough to see clearly */
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Full‑width Plot Test</h1>
+    <div id="chart"></div>
+  </div>
+
+  <script>
+    const chartDiv = document.getElementById("chart");
+
+    // Simple synthetic data: x = 0..99, y = some curve
+    const N = 100;
+    const x = Array.from({ length: N }, (_, i) => i);
+    const y = x.map(i => 50 + 30 * Math.sin(i / 10));
+
+    const trace = {
+      x,
+      y,
+      mode: "lines",
+      name: "test line",
+      line: { color: "#38bdf8", width: 2 },
+    };
+
+    const layout = {
+      title: "This line should span the full plot width",
+      paper_bgcolor: "#020617",
+      plot_bgcolor: "#020617",
+      font: { color: "#e5e7eb" },
+      xaxis: {
+        title: "index",
+        type: "linear",
+        range: [0, N - 1],  // from first index to last index
+        gridcolor: "#1f2937",
+      },
+      yaxis: {
+        title: "value",
+        gridcolor: "#1f2937",
+      },
+      margin: { l: 60, r: 20, t: 60, b: 60 },
+      legend: {
+        orientation: "h",
+        yanchor: "bottom",
+        y: 1.02,
+        xanchor: "left",
+        x: 0,
+      },
+    };
+
+    Plotly.newPlot(chartDiv, [trace], layout, { responsive: true });
+  </script>
+</body>
+</html>
+

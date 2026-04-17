@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MyStocks OSL – Forecasts & Commentary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a1830" />
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-top: #071120;
+      --bg-bottom: #0d1930;
+      --panel: rgba(7, 20, 37, 0.82);
+      --panel-strong: rgba(10, 24, 46, 0.96);
+      --border: rgba(119, 157, 209, 0.22);
+      --border-strong: rgba(102, 203, 255, 0.42);
+      --text: #eaf4ff;
+      --muted: #a9bfdc;
+      --accent: #67d3ff;
+      --accent-2: #22c7a9;
+      --warm: #ffb44d;
+      --shadow: 0 22px 60px rgba(1, 7, 16, 0.42);
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(103, 211, 255, 0.12), transparent 24rem),
+        radial-gradient(circle at top right, rgba(34, 199, 169, 0.1), transparent 20rem),
+        linear-gradient(180deg, rgba(8, 29, 62, 0.96) 0%, rgba(10, 33, 68, 0.92) 14%, rgba(13, 25, 48, 0.94) 26%, rgba(13, 25, 48, 0.98) 100%),
+        repeating-linear-gradient(118deg, rgba(120, 197, 255, 0.06) 0 2px, transparent 2px 44px),
+        repeating-linear-gradient(62deg, rgba(84, 222, 203, 0.045) 0 2px, transparent 2px 52px),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      color: var(--text);
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+    }
+    body::before {
+      background:
+        radial-gradient(circle at 12% 24%, rgba(125, 210, 255, 0.17), transparent 0 18rem),
+        radial-gradient(circle at 78% 34%, rgba(84, 222, 203, 0.11), transparent 0 16rem),
+        radial-gradient(circle at 58% 76%, rgba(114, 155, 255, 0.08), transparent 0 22rem);
+      mix-blend-mode: screen;
+    }
+    body::after {
+      background:
+        linear-gradient(180deg, rgba(7, 27, 56, 0.92), transparent 13rem),
+        radial-gradient(circle at 50% -10%, rgba(88, 175, 255, 0.2), transparent 0 22rem);
+    }
+    .page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1.1rem 1.5rem 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background:
+        linear-gradient(90deg, rgba(103, 211, 255, 0.08), transparent 28%),
+        linear-gradient(180deg, rgba(9, 22, 40, 0.96), rgba(8, 16, 29, 0.9));
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.03);
+    }
+    header h1 {
+      margin: 0 0 0.45rem 0;
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #f4fbff;
+      text-shadow: 0 0 24px rgba(103, 211, 255, 0.15);
+    }
+    header p {
+      margin: 0;
+      max-width: 78rem;
+      font-size: 0.96rem;
+      line-height: 1.55;
+      color: #d7ecff;
+    }
+    header p strong,
+    header p b {
+      color: #ffffff;
+    }
+    header a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(103, 211, 255, 0.45);
+    }
+    header a:hover {
+      color: #9ce6ff;
+      border-bottom-color: rgba(156, 230, 255, 0.8);
+    }
+    main {
+      flex: 1;
+      padding: 1.25rem 1.5rem 2.2rem 1.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    .controls-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .controls-row label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    select {
+      background:
+        linear-gradient(180deg, rgba(14, 31, 55, 0.98), rgba(8, 18, 34, 0.98));
+      color: var(--text);
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.8rem;
+      font-size: 0.9rem;
+      min-width: 120px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    #ticker-select {
+      min-width: 320px;
+    }
+    select:focus {
+      outline: none;
+      border-color: var(--border-strong);
+      box-shadow: 0 0 0 1px rgba(103, 211, 255, 0.35), 0 0 0 5px rgba(103, 211, 255, 0.08);
+    }
+    .chart-container {
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(9, 22, 41, 0.97), rgba(7, 16, 30, 0.94));
+      padding: 0.85rem;
+      margin-bottom: 1.1rem;
+      width: 100%;
+      box-sizing: border-box;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    #chart {
+      width: 100% !important;
+      display: block;
+      height: 450px;
+      min-height: 450px;
+    }
+    #chart .js-plotly-plot,
+    #chart .plot-container,
+    #chart .svg-container {
+      width: 100% !important;
+    }
+    #commentary {
+      margin-top: 0.5rem;
+      padding: 0.95rem 1rem;
+      border-radius: 1rem;
+      background:
+        linear-gradient(180deg, rgba(10, 24, 45, 0.98), rgba(12, 22, 38, 0.96));
+      border: 1px solid rgba(255, 180, 77, 0.42);
+      white-space: pre-wrap;
+      font-size: 0.92rem;
+      line-height: 1.55;
+      color: var(--text);
+      max-height: 260px;
+      overflow-y: auto;
+      min-height: 80px;
+      box-shadow: var(--shadow);
+    }
+    .ticker-label {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--warm);
+    }
+    @media (max-width: 768px) {
+      main { padding: 0.75rem 1rem 1.5rem 1rem; }
+      #chart { height: 360px; }
+      #ticker-select { min-width: 100%; }
+    }
+  </style>
+
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>MyStocks OSL</h1>
+      <p><strong>Forecasts with history and commentary per ticker.</strong> We used <a href="https://github.com/ai4finance-foundation/fingpt" target="_blank" rel="noreferrer">FinGPT</a> to predict Oslo stocks. The number right after the ticker indicates the ratio between minimum and maximum forecasts.</p>
+    </header>
+
+    <main>
+      <div class="controls-row">
+        <label for="ticker-select">Ticker:</label>
+        <select id="ticker-select">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+
+      <div class="chart-container">
+        <div id="chart"></div>
+      </div>
+
+      <div id="commentary">
+        <span class="ticker-label">Select a ticker</span> to see the model's commentary.
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/config.js?v=20260417-1"></script>
+  <script src="/static/app.js?v=20260417-14"></script>
+</body>
+</html>

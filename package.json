@@ -1,0 +1,19 @@
+{
+  "name": "mystocks-osl-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper for the MyStocks OSL web app.",
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

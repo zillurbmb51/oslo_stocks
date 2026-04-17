@@ -1,0 +1,10 @@
+{
+  "name": "MyStocks OSL",
+  "short_name": "MyStocks",
+  "start_url": "/static/index.html",
+  "display": "standalone",
+  "background_color": "#0a1830",
+  "theme_color": "#0a1830",
+  "description": "Forecasts with history, commentary, and actual prices for Oslo stocks.",
+  "icons": []
+}
