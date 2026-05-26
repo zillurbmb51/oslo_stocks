@@ -6,11 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .data_loader import (
-    load_rationales,
+    load_model_commentaries,
     load_multi_run_forecasts,
     load_history,
     load_actual_prices,
-    DATA_DIR,
 )
 from .models import (
     TickerList,
@@ -19,6 +18,8 @@ from .models import (
     ActualSeries,
     TickerMetric,
     TickerMetricList,
+    CommentaryResponse,
+    CommentaryBlock,
 )
 
 
@@ -32,7 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TICKER_TO_COMMENT: Dict[str, str] = {}
+TICKER_TO_COMMENTARIES: Dict[str, Dict[str, str]] = {}
 TICKER_TO_FORECAST: Dict[str, List[Dict[str, Any]]] = {}
 TICKER_TO_HISTORY: Dict[str, Dict[str, List[Any]]] = {}
 TICKER_TO_ACTUAL: Dict[str, Dict[str, List[Any]]] = {}
@@ -62,8 +63,8 @@ def compute_prediction_ratio(runs: List[Dict[str, Any]]) -> float:
 
 @app.on_event("startup")
 def startup_event():
-    global TICKER_TO_COMMENT, TICKER_TO_FORECAST, TICKER_TO_HISTORY, TICKER_TO_ACTUAL, TICKER_TO_RATIO
-    TICKER_TO_COMMENT = load_rationales()
+    global TICKER_TO_COMMENTARIES, TICKER_TO_FORECAST, TICKER_TO_HISTORY, TICKER_TO_ACTUAL, TICKER_TO_RATIO
+    TICKER_TO_COMMENTARIES = load_model_commentaries()
     TICKER_TO_FORECAST = load_multi_run_forecasts()
     TICKER_TO_HISTORY = load_history()
     TICKER_TO_ACTUAL = load_actual_prices()
@@ -80,8 +81,7 @@ def startup_event():
 
 @app.get("/api/tickers", response_model=TickerList)
 def list_tickers():
-    # Only expose tickers that have both forecasts and commentary.
-    tickers = sorted(set(TICKER_TO_FORECAST.keys()) & set(TICKER_TO_COMMENT.keys()))
+    tickers = sorted(set(TICKER_TO_FORECAST.keys()) & set(TICKER_TO_COMMENTARIES.keys()))
     return TickerList(tickers=tickers)
 
 
@@ -89,7 +89,7 @@ def list_tickers():
 def list_ticker_metrics():
     metrics = [
         TickerMetric(ticker=ticker, prediction_ratio=TICKER_TO_RATIO.get(ticker, 0.0))
-        for ticker in sorted(set(TICKER_TO_FORECAST.keys()) & set(TICKER_TO_COMMENT.keys()))
+        for ticker in sorted(set(TICKER_TO_FORECAST.keys()) & set(TICKER_TO_COMMENTARIES.keys()))
     ]
     return TickerMetricList(tickers=metrics)
 
@@ -110,13 +110,26 @@ def get_forecast(ticker: str):
     return ForecastMultiRun(ticker=key, runs=runs)
 
 
-@app.get("/api/commentary/{ticker}")
+@app.get("/api/commentary/{ticker}", response_model=CommentaryResponse)
 def get_commentary(ticker: str):
     key = ticker.strip().upper()
-    comment = TICKER_TO_COMMENT.get(key)
-    if comment is None:
+    comments = TICKER_TO_COMMENTARIES.get(key)
+    if not comments:
         raise HTTPException(status_code=404, detail="Ticker not found")
-    return {"ticker": key, "commentary": comment}
+
+    blocks: List[CommentaryBlock] = []
+    fingpt_comment = next(
+        (comments.get(source) for source in ["FinGPT1", "FinGPT2", "FinGPT3"] if comments.get(source)),
+        None,
+    )
+    if fingpt_comment:
+        blocks.append(CommentaryBlock(source="FinGPT", commentary=fingpt_comment))
+
+    for source in ["StatsForecast", "AutoETS"]:
+        if comments.get(source):
+            blocks.append(CommentaryBlock(source=source, commentary=comments[source]))
+
+    return CommentaryResponse(ticker=key, commentaries=blocks)
 
 
 @app.get("/api/history/{ticker}")

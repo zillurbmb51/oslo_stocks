@@ -10,6 +10,34 @@ RATIONALES_FILE = DATA_DIR / "ticker_rationales_osl_parallel.csv"
 HISTORY_FILE = DATA_DIR / "oslo_stock_exchange_all_companies.xlsx"
 ACTUALS_FILE = DATA_DIR / "oslo_actual_prices.csv"
 
+FORECAST_SOURCES = [
+    {
+        "label": "FinGPT1",
+        "path": DATA_DIR / "my_new_predictions_osl_2026-04-07.csv",
+        "sep": "\t",
+    },
+    {
+        "label": "FinGPT2",
+        "path": DATA_DIR / "my_new_predictions_osl_2026-04-07_single_run_nocontext.csv",
+        "sep": "\t",
+    },
+    {
+        "label": "FinGPT3",
+        "path": DATA_DIR / "my_new_predictions_osl_2026-04-07_single_run2_nocontext.csv",
+        "sep": "\t",
+    },
+    {
+        "label": "StatsForecast",
+        "path": DATA_DIR / "statsforecast_llama3_osl_2026-04-07_single_run.tsv",
+        "sep": "\t",
+    },
+    {
+        "label": "AutoETS",
+        "path": DATA_DIR / "autoets_rag_llama3_osl_2026-04-24_single_run.tsv",
+        "sep": "\t",
+    },
+]
+
 
 # -----------------------------
 # Commentary cleaning
@@ -47,6 +75,8 @@ def clean_comment(raw: str) -> str:
             continue
         if re.fullmatch(r"-{3,}", stripped):
             continue
+        if stripped.lower() in {"text", "plain"}:
+            continue
         if stripped.startswith("```"):
             continue
         cleaned_lines.append(line)
@@ -61,8 +91,18 @@ def clean_comment(raw: str) -> str:
         flags=re.IGNORECASE,
     )
 
+    # Remove prompt tails and review instructions that appear in some rows.
+    text = re.split(
+        r"\n\s*(?:Note:|Please |Is my commentary|Are there any suggestions|"
+        r"Thank you|Also,|If there are any errors|\[End of commentary\])",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+
     # Collapse excessive blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"^(?:text|plain)\s+", "", text, flags=re.IGNORECASE)
 
     return text.strip()
 
@@ -108,30 +148,59 @@ def load_rationales() -> Dict[str, str]:
     return dict(zip(df_unique["ticker_norm"], df_unique["clean_comment"]))
 
 
+def load_model_commentaries() -> Dict[str, Dict[str, str]]:
+    ticker_to_comments: Dict[str, Dict[str, str]] = {}
+
+    rationales = load_rationales()
+    for ticker, comment in rationales.items():
+        if comment:
+            ticker_to_comments.setdefault(ticker, {})
+            ticker_to_comments[ticker]["FinGPT1"] = comment
+            ticker_to_comments[ticker]["FinGPT2"] = comment
+            ticker_to_comments[ticker]["FinGPT3"] = comment
+
+    for source in FORECAST_SOURCES:
+        if source["label"] in {"FinGPT1", "FinGPT2", "FinGPT3"}:
+            continue
+
+        df = pd.read_csv(source["path"], sep=source["sep"])
+        if "ticker" not in df.columns or "comment" not in df.columns:
+            continue
+
+        df = df.copy()
+        df["ticker_norm"] = df["ticker"].astype(str).str.strip().str.upper()
+        df["clean_comment"] = df["comment"].apply(clean_comment)
+
+        for _, row in df.iterrows():
+            ticker = row["ticker_norm"]
+            comment = row["clean_comment"]
+            if not ticker or not comment:
+                continue
+            ticker_to_comments.setdefault(ticker, {})
+            ticker_to_comments[ticker][source["label"]] = comment
+
+    return ticker_to_comments
+
+
 # -----------------------------
 # Forecast loader
 # -----------------------------
 
 def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
     """
-    Load all forecast runs from my_new_predictions_osl_*.csv files in data/.
-
-    - Each file is one run (identified by a 'run_index' column or by
-      the _runX in the filename).
-    - Each row is a ticker with price_* horizon columns.
+    Load the website's five selected forecast runs from data/.
 
     Output:
       {
         "2020": [
-          {"run_index": 1, "horizons": [...], "values": [...]},
-          {"run_index": 2, "horizons": [...], "values": [...]},
+          {"run_index": 1, "run_label": "FinGPT1", "horizons": [...], "values": [...]},
+          {"run_index": 2, "run_label": "FinGPT2", "horizons": [...], "values": [...]},
           ...
         ],
         "AZT": [...],
         ...
       }
     """
-    pattern = "my_new_predictions_osl_*_run*.csv"
     ticker_to_runs: Dict[str, List[Dict[str, Any]]] = {}
 
     # Map "frontend horizon label" → "CSV column name"
@@ -152,31 +221,14 @@ def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
         ("5y", "price_5y"),
     ]
 
-    for path in DATA_DIR.glob(pattern):
-        df = pd.read_csv(path,sep='\t')
+    for source_index, source in enumerate(FORECAST_SOURCES, start=1):
+        df = pd.read_csv(source["path"], sep=source["sep"])
 
         # Determine which price_* columns are present
         available = [(h_label, col) for (h_label, col) in horizon_map if col in df.columns]
         if not available:
             # This file has no usable forecast horizons
             continue
-
-        # Run index: from column if present, else from filename
-        run_index: int
-        if "run_index" in df.columns and not df["run_index"].isna().all():
-            try:
-                run_index = int(df["run_index"].iloc[0])
-            except Exception:
-                run_index = 0
-        else:
-            # Try parse from filename e.g. ..._run3.csv
-            run_index = 0
-            m = re.search(r"_run(\d+)\.csv$", path.name)
-            if m:
-                try:
-                    run_index = int(m.group(1))
-                except Exception:
-                    run_index = 0
 
         for _, row in df.iterrows():
             raw_ticker = str(row.get("ticker", "")).strip()
@@ -203,12 +255,16 @@ def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
                 continue
 
             run_dict = {
-                "run_index": run_index,
+                "run_index": source_index,
+                "run_label": source["label"],
                 "horizons": horizons,
                 "values": values,
             }
 
             ticker_to_runs.setdefault(base_ticker, []).append(run_dict)
+
+    for runs in ticker_to_runs.values():
+        runs.sort(key=lambda run: run["run_index"])
 
     return ticker_to_runs
 

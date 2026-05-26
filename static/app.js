@@ -4,6 +4,13 @@ const chartDiv = document.getElementById("chart");
 const commentaryDiv = document.getElementById("commentary");
 let resizeTimer = null;
 const HISTORY_WIDTH_RATIO = 0.5;
+const FORECAST_LABELS = {
+  1: "FinGPT1",
+  2: "FinGPT2",
+  3: "FinGPT3",
+  4: "StatsForecast",
+  5: "AutoETS",
+};
 
 let tickerMetrics = [];
 
@@ -25,6 +32,21 @@ async function fetchJSON(url) {
 
 function formatRatio(value) {
   return Number.isFinite(value) ? value.toFixed(3) : "0.000";
+}
+
+function getRunLabel(run, fallbackIndex) {
+  const explicitLabel = run?.run_label || run?.runLabel;
+  if (explicitLabel) {
+    return explicitLabel;
+  }
+
+  const runIndex = Number.isFinite(run?.run_index)
+    ? run.run_index
+    : Number.isFinite(run?.runIndex)
+      ? run.runIndex
+      : fallbackIndex + 1;
+
+  return FORECAST_LABELS[runIndex] || `run ${runIndex}`;
 }
 
 function sortTickerMetrics(metrics) {
@@ -171,6 +193,7 @@ async function updateChart(ticker) {
 
     forecastRuns.push({
       runIndex: run.run_index ?? idx,
+      runLabel: getRunLabel(run, idx),
       dates: dates.slice(0, count),
       values: values.slice(0, count),
     });
@@ -243,7 +266,7 @@ async function updateChart(ticker) {
       x: run.dates.map((date) => forecastPositionByDate.get(date)),
       y: run.values,
       mode: "lines+markers",
-      name: `run ${run.runIndex}`,
+      name: run.runLabel,
       line: {
         color: getColor(idx),
         width: 2,
@@ -299,7 +322,7 @@ async function updateChart(ticker) {
     plot_bgcolor: "#020617",
     font: { color: "#e5e7eb" },
     autosize: true,
-    margin: { l: 60, r: 20, t: 60, b: 60 },
+    margin: { l: 60, r: 20, t: 60, b: 180 },
     xaxis: {
       title: "Date",
       type: "linear",
@@ -307,6 +330,8 @@ async function updateChart(ticker) {
       tickmode: "array",
       tickvals,
       ticktext,
+      tickangle: 90,
+      title_standoff: 28,
       gridcolor: "#1f2937",
       zeroline: false,
     },
@@ -318,10 +343,10 @@ async function updateChart(ticker) {
     },
     legend: {
       orientation: "h",
-      yanchor: "bottom",
-      y: 1.02,
-      xanchor: "left",
-      x: 0,
+      yanchor: "top",
+      y: -0.55,
+      xanchor: "center",
+      x: 0.5,
     },
     shapes: hasHistory && hasForecast ? [
       {
@@ -354,13 +379,13 @@ async function updateCommentary(ticker) {
   const resp = await fetch(`${API_BASE}/api/commentary/${ticker}`);
 
   commentaryDiv.innerHTML = "";
-  const titleSpan = document.createElement("span");
-  titleSpan.className = "ticker-label";
-  const textNode = document.createElement("pre");
-  textNode.style.marginTop = "0.5rem";
-  textNode.style.whiteSpace = "pre-wrap";
 
   if (!resp.ok) {
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "ticker-label";
+    const textNode = document.createElement("pre");
+    textNode.style.marginTop = "0.5rem";
+    textNode.style.whiteSpace = "pre-wrap";
     titleSpan.textContent = `${ticker} commentary`;
     textNode.textContent = `No commentary available for ${ticker}.`;
     commentaryDiv.appendChild(titleSpan);
@@ -371,13 +396,42 @@ async function updateCommentary(ticker) {
   }
 
   const data = await resp.json();
+  const titleSpan = document.createElement("span");
+  titleSpan.className = "ticker-label";
   titleSpan.textContent = `${data.ticker} commentary`;
-  textNode.textContent = data.commentary;
-
   commentaryDiv.appendChild(titleSpan);
-  commentaryDiv.appendChild(document.createElement("br"));
-  commentaryDiv.appendChild(document.createElement("br"));
-  commentaryDiv.appendChild(textNode);
+
+  const blocks = Array.isArray(data.commentaries) ? data.commentaries : [];
+  if (blocks.length === 0) {
+    const emptyNode = document.createElement("pre");
+    emptyNode.style.marginTop = "0.75rem";
+    emptyNode.style.whiteSpace = "pre-wrap";
+    emptyNode.textContent = `No commentary available for ${ticker}.`;
+    commentaryDiv.appendChild(document.createElement("br"));
+    commentaryDiv.appendChild(document.createElement("br"));
+    commentaryDiv.appendChild(emptyNode);
+    return false;
+  }
+
+  blocks.forEach((block, index) => {
+    const section = document.createElement("div");
+    section.style.marginTop = index === 0 ? "0.85rem" : "1.15rem";
+
+    const sourceTitle = document.createElement("div");
+    sourceTitle.className = "ticker-label";
+    sourceTitle.style.fontSize = "0.95rem";
+    sourceTitle.textContent = block.source;
+
+    const textNode = document.createElement("pre");
+    textNode.style.marginTop = "0.4rem";
+    textNode.style.marginBottom = "0";
+    textNode.style.whiteSpace = "pre-wrap";
+    textNode.textContent = block.commentary;
+
+    section.appendChild(sourceTitle);
+    section.appendChild(textNode);
+    commentaryDiv.appendChild(section);
+  });
   return true;
 }
 

@@ -4,10 +4,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from datetime import datetime
 import re
-from io import StringIO
+import csv
+from dataclasses import dataclass
 from urllib.request import Request, urlopen
-
-import pandas as pd
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -16,12 +15,12 @@ EURONEXT_URL = "https://live.euronext.com/pd_es/data/stocks/download?mics=XOSL"
 OSLO_TZ = ZoneInfo("Europe/Oslo")
 
 
-def normalize_columns(columns) -> list[str]:
-    return [str(col).strip().lower().replace("/", "_").replace(" ", "_") for col in columns]
+def normalize_column(name: str) -> str:
+    return str(name).strip().lower().replace("/", "_").replace(" ", "_")
 
 
 def parse_price(value) -> float | None:
-    if pd.isna(value):
+    if value is None:
         return None
 
     raw = str(value).strip().replace("\xa0", "").replace(" ", "")
@@ -52,7 +51,14 @@ def fetch_csv_text() -> str:
         return response.read().decode("utf-8-sig", errors="replace")
 
 
-def fetch_actual_table() -> pd.DataFrame:
+@dataclass(frozen=True)
+class ActualRow:
+    date: str
+    ticker: str
+    price: float
+
+
+def fetch_actual_rows(oslo_date: str) -> list[ActualRow]:
     text = fetch_csv_text()
     lines = [line for line in text.splitlines() if line.strip()]
     header_index = next(
@@ -63,45 +69,82 @@ def fetch_actual_table() -> pd.DataFrame:
         raise RuntimeError("Could not find Symbol/last Price headers in the Euronext download.")
 
     csv_text = "\n".join(lines[header_index:])
-    df = pd.read_csv(StringIO(csv_text), sep=";")
-    df.columns = normalize_columns(df.columns)
-    if not {"symbol", "last_price"}.issubset(df.columns):
+    reader = csv.DictReader(csv_text.splitlines(), delimiter=";")
+    if reader.fieldnames is None:
+        raise RuntimeError("Euronext download did not contain a CSV header row.")
+
+    normalized_to_original: dict[str, str] = {normalize_column(name): name for name in reader.fieldnames}
+    if not {"symbol", "last_price"}.issubset(normalized_to_original.keys()):
         raise RuntimeError("The Euronext download is missing symbol/last price columns.")
-    return df
+
+    symbol_key = normalized_to_original["symbol"]
+    last_price_key = normalized_to_original["last_price"]
+
+    results: list[ActualRow] = []
+    seen: set[tuple[str, str]] = set()
+    for row in reader:
+        ticker = (row.get(symbol_key) or "").strip().upper()
+        if not ticker:
+            continue
+        price = parse_price(row.get(last_price_key))
+        if price is None:
+            continue
+
+        key = (oslo_date, ticker)
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(ActualRow(date=oslo_date, ticker=ticker, price=price))
+
+    return results
 
 
-def build_actual_rows() -> pd.DataFrame:
-    df = fetch_actual_table()
-    df = df[["symbol", "last_price"]].copy()
-    df["ticker"] = df["symbol"].astype(str).str.strip().str.upper()
-    df["price"] = df["last_price"].apply(parse_price)
-    df = df.dropna(subset=["ticker", "price"])
-    df = df[df["ticker"] != ""]
-    df["date"] = datetime.now(OSLO_TZ).date().isoformat()
-    return df[["date", "ticker", "price"]].drop_duplicates(subset=["date", "ticker"], keep="last")
+def read_existing_actuals() -> dict[tuple[str, str], float]:
+    if not ACTUALS_FILE.exists():
+        return {}
+
+    existing: dict[tuple[str, str], float] = {}
+    with ACTUALS_FILE.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            date = (row.get("date") or "").strip()
+            ticker = (row.get("ticker") or "").strip().upper()
+            if not date or not ticker:
+                continue
+            price = parse_price(row.get("price"))
+            if price is None:
+                continue
+            existing[(date, ticker)] = float(price)
+    return existing
 
 
-def upsert_actuals() -> pd.DataFrame:
-    new_rows = build_actual_rows()
+def write_actuals(rows: dict[tuple[str, str], float]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with ACTUALS_FILE.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["date", "ticker", "price"])
+        writer.writeheader()
+        for (date, ticker), price in sorted(rows.items(), key=lambda item: (item[0][0], item[0][1])):
+            writer.writerow({"date": date, "ticker": ticker, "price": price})
 
-    if ACTUALS_FILE.exists():
-        existing = pd.read_csv(ACTUALS_FILE, dtype={"ticker": "string"})
-    else:
-        existing = pd.DataFrame(columns=["date", "ticker", "price"])
 
-    combined = pd.concat([existing, new_rows], ignore_index=True)
-    combined["ticker"] = combined["ticker"].astype(str).str.strip().str.upper()
-    combined = combined.dropna(subset=["date", "ticker", "price"])
-    combined["price"] = pd.to_numeric(combined["price"], errors="coerce")
-    combined = combined.dropna(subset=["price"])
-    combined = combined.sort_values(["date", "ticker"])
-    combined = combined.drop_duplicates(subset=["date", "ticker"], keep="last")
-    combined.to_csv(ACTUALS_FILE, index=False)
+def upsert_actuals() -> list[ActualRow]:
+    oslo_date = datetime.now(OSLO_TZ).date().isoformat()
+    new_rows = fetch_actual_rows(oslo_date=oslo_date)
+
+    existing = read_existing_actuals()
+    for row in new_rows:
+        existing[(row.date, row.ticker)] = row.price
+
+    write_actuals(existing)
     return new_rows
 
 
 def main() -> None:
-    rows = upsert_actuals()
+    try:
+        rows = upsert_actuals()
+    except Exception as exc:
+        raise SystemExit(f"Oslo actual-price refresh failed: {exc}") from exc
+
     print(f"Saved {len(rows)} Oslo actual price rows to {ACTUALS_FILE}")
 
 

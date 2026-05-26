@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class RunSeries(BaseModel):
     run_index: int
+    run_label: str
     horizons: List[str]
     values: List[float]
 
@@ -11,6 +12,16 @@ class RunSeries(BaseModel):
 class ForecastMultiRun(BaseModel):
     ticker: str
     runs: List[RunSeries]
+
+
+class CommentaryBlock(BaseModel):
+    source: str
+    commentary: str
+
+
+class CommentaryResponse(BaseModel):
+    ticker: str
+    commentaries: List[CommentaryBlock]
 
 
 class TickerList(BaseModel):
