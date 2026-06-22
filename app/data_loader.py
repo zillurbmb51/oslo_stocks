@@ -180,9 +180,18 @@ def load_model_commentaries() -> Dict[str, Dict[str, str]]:
         if not source["path"].exists():
             continue
 
-        df = pd.read_csv(source["path"], sep=source["sep"])
+        try:
+            df = pd.read_csv(source["path"], sep=source["sep"])
+        except FileNotFoundError:
+            # Missing artifact in a particular deploy build; keep the service running.
+            continue
+        except Exception:
+            # Keep the service running even if one source file is malformed.
+            continue
+
         if "ticker" not in df.columns or "comment" not in df.columns:
             continue
+
 
         df = df.copy()
         df["ticker_norm"] = df["ticker"].astype(str).str.strip().str.upper()
