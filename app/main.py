@@ -123,9 +123,10 @@ def get_commentary(ticker: str):
     if fingpt_comment:
         blocks.append(CommentaryBlock(source="FinGPT", commentary=fingpt_comment))
 
-    for source in ["StatsForecast", "AutoETS"]:
+    for source in ["Chronos", "NHITS", "Prophet", "StatsForecast", "TimesFM", "XGBoost", "AutoETS"]:
         if comments.get(source):
             blocks.append(CommentaryBlock(source=source, commentary=comments[source]))
+
 
     return CommentaryResponse(ticker=key, commentaries=blocks)
 
