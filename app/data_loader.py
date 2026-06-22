@@ -11,24 +11,41 @@ HISTORY_FILE = DATA_DIR / "oslo_stock_exchange_all_companies.xlsx"
 ACTUALS_FILE = DATA_DIR / "oslo_actual_prices.csv"
 
 FORECAST_SOURCES = [
+    # Keep only the requested prediction sources.
+    # FinGPT2/FinGPT3 are intentionally excluded from the published runs.
     {
         "label": "FinGPT1",
         "path": DATA_DIR / "my_new_predictions_osl_2026-04-07.csv",
         "sep": "\t",
     },
     {
-        "label": "FinGPT2",
-        "path": DATA_DIR / "my_new_predictions_osl_2026-04-07_single_run_nocontext.csv",
+        "label": "Chronos",
+        "path": DATA_DIR / "chronos_osl_2026-06-22_single_run.tsv",
         "sep": "\t",
     },
     {
-        "label": "FinGPT3",
-        "path": DATA_DIR / "my_new_predictions_osl_2026-04-07_single_run2_nocontext.csv",
+        "label": "NHITS",
+        "path": DATA_DIR / "nhits_osl_2026-06-22_single_run.tsv",
+        "sep": "\t",
+    },
+    {
+        "label": "Prophet",
+        "path": DATA_DIR / "prophet_osl_2026-06-22_single_run.tsv",
         "sep": "\t",
     },
     {
         "label": "StatsForecast",
         "path": DATA_DIR / "statsforecast_llama3_osl_2026-04-07_single_run.tsv",
+        "sep": "\t",
+    },
+    {
+        "label": "TimesFM",
+        "path": DATA_DIR / "timesfm_osl_2026-06-22_single_run.tsv",
+        "sep": "\t",
+    },
+    {
+        "label": "XGBoost",
+        "path": DATA_DIR / "xgboost_osl_2026-06-21_single_run.tsv",
         "sep": "\t",
     },
     {
@@ -47,8 +64,8 @@ def clean_comment(raw: str) -> str:
     Clean a raw comment string like the ones in the file segments
     (e.g. AZT, JIN, BRG, NAS, SOMA, SB1NO, etc.).
     Removes boilerplate, separators, and ``` blocks
-    <ref: index={3344531} firstWord={1} lastWord={34}/>
-    <ref: index={3344373} firstWord={43} lastWord={54}/>.
+    <ref: index={3344531} firstWord={1} lastWord={34}/> 
+    <ref: index={3344373} firstWord={43} lastWord={54}/>. 
     """
     if not isinstance(raw, str):
         return ""
@@ -130,15 +147,11 @@ def load_rationales() -> Dict[str, str]:
     # DO NOT strip ".OL" etc., because you said tickers in all CSVs match
     # sheet names in the history file.
     df_raw["ticker_norm"] = (
-        df_raw["ticker"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
+        df_raw["ticker"].astype(str).str.strip().str.upper()
     )
 
     df_unique = (
-        df_raw
-        .dropna(subset=["clean_comment"])
+        df_raw.dropna(subset=["clean_comment"])
         .drop_duplicates(subset=["ticker_norm", "clean_comment"])
         .sort_values("run_start")
         .groupby("ticker_norm", as_index=False)
@@ -188,13 +201,12 @@ def load_model_commentaries() -> Dict[str, Dict[str, str]]:
 
 def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
     """
-    Load the website's five selected forecast runs from data/.
+    Load the website's selected forecast runs from data/.
 
     Output:
       {
         "2020": [
           {"run_index": 1, "run_label": "FinGPT1", "horizons": [...], "values": [...]},
-          {"run_index": 2, "run_label": "FinGPT2", "horizons": [...], "values": [...]},
           ...
         ],
         "AZT": [...],
@@ -272,6 +284,7 @@ def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
 # -----------------------------
 # History loader
 # -----------------------------
+
 def load_history() -> Dict[str, Dict[str, List[Any]]]:
     """
     Load historical close prices from oslo_stock_exchange_all_companies.xlsx.
@@ -283,10 +296,7 @@ def load_history() -> Dict[str, Dict[str, List[Any]]]:
 
     Returns:
       {
-        "2020": {
-          "dates": [...],
-          "closes": [...]
-        },
+        "2020": {"dates": [...], "closes": [...]},
         ...
       }
     """
@@ -300,10 +310,8 @@ def load_history() -> Dict[str, Dict[str, List[Any]]]:
     history: Dict[str, Dict[str, List[Any]]] = {}
 
     for sheet_name, df in all_sheets.items():
-        # Use the sheet name directly as ticker key, normalized.
         base_ticker = str(sheet_name).strip().upper()
 
-        # Find a "Close" column in the top-level of the MultiIndex
         close_col = None
         for col in df.columns:
             lvl0, lvl1 = col
@@ -323,10 +331,7 @@ def load_history() -> Dict[str, Dict[str, List[Any]]]:
         df_hist["Date"] = pd.to_datetime(df_hist["Date"])
 
         df_hist["Close"] = (
-            df_hist["Close"]
-            .astype(str)
-            .str.replace(",", ".", regex=False)
-            .astype(float)
+            df_hist["Close"].astype(str).str.replace(",", ".", regex=False).astype(float)
         )
 
         df_hist = df_hist.sort_values("Date")
@@ -369,3 +374,4 @@ def load_actual_prices() -> Dict[str, Dict[str, List[Any]]]:
         }
 
     return actuals
+
