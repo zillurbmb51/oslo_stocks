@@ -118,10 +118,8 @@ def get_commentary(ticker: str):
         raise HTTPException(status_code=404, detail="Ticker not found")
 
     blocks: List[CommentaryBlock] = []
-    fingpt_comment = next(
-        (comments.get(source) for source in ["FinGPT1", "FinGPT2", "FinGPT3"] if comments.get(source)),
-        None,
-    )
+    fingpt_comment = comments.get("FinGPT1")
+    
     if fingpt_comment:
         blocks.append(CommentaryBlock(source="FinGPT", commentary=fingpt_comment))
 
