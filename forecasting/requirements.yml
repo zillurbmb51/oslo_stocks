@@ -1,0 +1,77 @@
+name: osl_forecast
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - numpy<2.0          # statsforecast / neuralforecast require <2.0
+  - pandas>=2.0
+  - scikit-learn>=1.4
+  - openpyxl           # read Oslo Excel history file
+  - xgboost>=2.0
+  - tqdm
+  # PyTorch CPU-only build (no CUDA needed on 128 GB / 12 CPU machine)
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::cpuonly
+
+  - pip
+  - pip:
+    # Prophet (Meta) — trend + seasonality decomposition
+    - prophet>=1.1.5
+
+    # NeuralForecast (N-HiTS) — deep learning, CPU-trainable global model
+    - neuralforecast>=1.7.4
+
+    # Google TimesFM — pre-trained 200M-param transformer, zero-shot
+    # First run downloads ~800 MB from HuggingFace
+    - timesfm[torch]>=1.2.0
+
+    # Amazon Chronos — pre-trained T5 transformer, zero-shot
+    # First run downloads checkpoint from HuggingFace
+    - chronos-forecasting>=1.4.0
+
+    # HuggingFace Hub for checkpoint management
+    - huggingface_hub>=0.23
+
+    # Accelerate (speeds up Chronos/TimesFM inference on CPU)
+    - accelerate>=0.30
+
+    # Jupyter for interactive exploration (optional but useful)
+    - jupyter
+    - matplotlib
+    - seaborn
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Setup instructions
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Install Miniconda or Anaconda if not already installed.
+#
+# 2. Create the environment (first time):
+#      conda env create -f requirements.yml
+#
+# 3. Activate:
+#      conda activate osl_forecast
+#
+# 4. Run a forecast script from the forecasting/ directory:
+#      cd forecasting/
+#      python prophet_forecast.py
+#      python xgboost_forecast.py
+#      python nhits_forecast.py       # deep learning — ~30-60 min
+#      python timesfm_forecast.py     # downloads ~800 MB first run
+#      python chronos_forecast.py     # downloads checkpoint first run
+#
+# 5. Output TSV files are written to ../data/ (one file per model per run date).
+#    Copy the TSV files to the web server's data/ directory to display them.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Deep learning models on this machine (128 GB RAM, 12 CPU, no GPU):
+# ─────────────────────────────────────────────────────────────────────────────
+# • N-HiTS   (nhits_forecast.py)    — trains from scratch, ~30-60 min
+# • TimesFM  (timesfm_forecast.py)  — zero-shot inference, ~60-120 min
+# • Chronos  (chronos_forecast.py)  — zero-shot inference, ~60-120 min (small)
+#
+# All three run on CPU. For faster results on Chronos/TimesFM, add a GPU
+# (any CUDA-capable card with ≥8 GB VRAM) and change backend/device_map to "cuda".

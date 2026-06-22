@@ -176,6 +176,10 @@ def load_model_commentaries() -> Dict[str, Dict[str, str]]:
         if source["label"] in {"FinGPT1", "FinGPT2", "FinGPT3"}:
             continue
 
+        # Render containers may not contain all forecast artifacts.
+        if not source["path"].exists():
+            continue
+
         df = pd.read_csv(source["path"], sep=source["sep"])
         if "ticker" not in df.columns or "comment" not in df.columns:
             continue
