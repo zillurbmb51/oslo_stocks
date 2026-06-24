@@ -102,11 +102,26 @@ function horizonToDaysFromToday(horizon) {
   return 0;
 }
 
+// Anchor forecast horizon dates to a fixed base date so the forecast
+// segment stays stable while actual prices update daily.
+// Using TimesFM base date for all models per your instruction.
+const FORECAST_BASE_DATE = "2026-06-22";
+
 function horizonLabelsToDates(horizons) {
-  const today = new Date();
+  const base = new Date(FORECAST_BASE_DATE);
+  if (Number.isNaN(base.getTime())) {
+    // Fallback (should not happen): anchor to current date.
+    const today = new Date();
+    return (horizons || []).map((horizon) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() + horizonToDaysFromToday(horizon));
+      return date.toISOString().slice(0, 10);
+    });
+  }
+
   return (horizons || []).map((horizon) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + horizonToDaysFromToday(horizon));
+    const date = new Date(base);
+    date.setDate(base.getDate() + horizonToDaysFromToday(horizon));
     return date.toISOString().slice(0, 10);
   });
 }
