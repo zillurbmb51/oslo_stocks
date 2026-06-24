@@ -246,26 +246,70 @@ async function updateChart(ticker) {
 
   // Keep the layout as two segments:
   // - history on the left half: 0 → HISTORY_WIDTH_RATIO
-  // - actual + forecast on the right half: HISTORY_WIDTH_RATIO → 1
-  // This ensures history never stretches to the far right even when it has
-  // many more points than forecast.
+  // - forecast + actual on the right half: HISTORY_WIDTH_RATIO → 1
+  //
+  // For actuals, compute x-position from a continuous shared timeline
+  // (Option C). This way:
+  // - actual points progress gradually day-by-day
+  // - when an actual date equals a forecast date, they map to the same x
+  // - actual will naturally stop before forecast horizon as long as its
+  //   real dates are earlier than the forecast start.
+
   const historyPositions = evenlySpacedPositions(
     historyDates.length,
     0,
     hasHistory && hasForecast ? HISTORY_WIDTH_RATIO : 1,
   );
 
-  const forecastPositions = evenlySpacedPositions(
-    forecastDates.length,
-    hasHistory ? HISTORY_WIDTH_RATIO : 0,
-    1,
+  // Right-side continuous axis (real dates), based on forecast range.
+  const rightTimeline = Array.from(new Set(forecastDates.slice())).sort(
+    (a, b) => new Date(a) - new Date(b)
   );
 
-  const actualPositions = evenlySpacedPositions(
-    actualDates.length,
-    hasHistory ? HISTORY_WIDTH_RATIO : 0,
-    1,
-  );
+  const rightStartX = hasHistory ? HISTORY_WIDTH_RATIO : 0;
+  const rightEndX = 1;
+
+  const rightIndexByDate = new Map();
+  rightTimeline.forEach((d, i) => rightIndexByDate.set(d, i));
+
+  const rightToAxisPos = (date) => {
+    if (!rightTimeline.length) return rightStartX;
+    const idx = rightIndexByDate.get(date);
+    // If we have an exact match with a forecast date, align perfectly.
+    if (idx !== undefined) {
+      if (rightTimeline.length === 1) return rightStartX;
+      const t = idx / (rightTimeline.length - 1);
+      return rightStartX + t * (rightEndX - rightStartX);
+    }
+
+    // If actual date is between forecast dates, interpolate based on
+    // position in the sorted date array.
+    const actualTime = new Date(date).getTime();
+    const times = rightTimeline.map((d) => new Date(d).getTime());
+
+    // Clamp to forecast range (so actual cannot cross into the forecast).
+    if (actualTime <= times[0]) return rightStartX;
+    if (actualTime >= times[times.length - 1]) return rightEndX;
+
+    // Find bracket [i, i+1]
+    let i = 0;
+    while (i + 1 < times.length && !(times[i] <= actualTime && actualTime <= times[i + 1])) {
+      i++;
+    }
+    const leftT = times[i];
+    const rightT = times[i + 1];
+    const span = rightT - leftT;
+    const frac = span === 0 ? 0 : (actualTime - leftT) / span;
+
+    const leftIdx = i;
+    const rightIdx = i + 1;
+    const t = (leftIdx + frac) / (times.length - 1);
+
+    return rightStartX + t * (rightEndX - rightStartX);
+  };
+
+  const forecastPositions = forecastDates.map(rightToAxisPos);
+  const actualPositions = actualDates.map(rightToAxisPos);
 
   const forecastPositionByDate = new Map();
   forecastDates.forEach((date, index) => {
