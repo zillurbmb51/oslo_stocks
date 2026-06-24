@@ -243,30 +243,29 @@ async function updateChart(ticker) {
 
   const hasHistory = historyDates.length > 0;
   const hasForecast = forecastDates.length > 0;
-  // Use real dates to position all segments on the shared linear 0..1 axis.
-  // Fixes the issue where actual points could appear shifted/years-ahead after
-  // refreshing `oslo_actual_prices.csv`.
-  const timeline = Array.from(
-    new Set([
-      ...historyDates,
-      ...forecastDates,
-      ...actualDates,
-    ])
-  ).sort((a, b) => new Date(a) - new Date(b));
 
-  const indexByDate = new Map();
-  timeline.forEach((d, i) => indexByDate.set(d, i));
+  // Keep the layout as two segments:
+  // - history on the left half: 0 → HISTORY_WIDTH_RATIO
+  // - actual + forecast on the right half: HISTORY_WIDTH_RATIO → 1
+  // This ensures history never stretches to the far right even when it has
+  // many more points than forecast.
+  const historyPositions = evenlySpacedPositions(
+    historyDates.length,
+    0,
+    hasHistory && hasForecast ? HISTORY_WIDTH_RATIO : 1,
+  );
 
-  const toAxisPos = (date) => {
-    const idx = indexByDate.get(date);
-    if (idx === undefined) return 0;
-    if (timeline.length <= 1) return 0;
-    return idx / (timeline.length - 1);
-  };
+  const forecastPositions = evenlySpacedPositions(
+    forecastDates.length,
+    hasHistory ? HISTORY_WIDTH_RATIO : 0,
+    1,
+  );
 
-  const historyPositions = historyDates.map(toAxisPos);
-  const forecastPositions = forecastDates.map(toAxisPos);
-  const actualPositions = actualDates.map(toAxisPos);
+  const actualPositions = evenlySpacedPositions(
+    actualDates.length,
+    hasHistory ? HISTORY_WIDTH_RATIO : 0,
+    1,
+  );
 
   const forecastPositionByDate = new Map();
   forecastDates.forEach((date, index) => {
