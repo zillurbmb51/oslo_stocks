@@ -228,21 +228,30 @@ async function updateChart(ticker) {
 
   const hasHistory = historyDates.length > 0;
   const hasForecast = forecastDates.length > 0;
-  const historyPositions = evenlySpacedPositions(
-    historyDates.length,
-    0,
-    hasHistory && hasForecast ? HISTORY_WIDTH_RATIO : 1,
-  );
-  const forecastPositions = evenlySpacedPositions(
-    forecastDates.length,
-    hasHistory ? HISTORY_WIDTH_RATIO : 0,
-    1,
-  );
-  const actualPositions = evenlySpacedPositions(
-    actualDates.length,
-    hasHistory ? HISTORY_WIDTH_RATIO : 0,
-    1,
-  );
+  // Use real dates to position all segments on the shared linear 0..1 axis.
+  // Fixes the issue where actual points could appear shifted/years-ahead after
+  // refreshing `oslo_actual_prices.csv`.
+  const timeline = Array.from(
+    new Set([
+      ...historyDates,
+      ...forecastDates,
+      ...actualDates,
+    ])
+  ).sort((a, b) => new Date(a) - new Date(b));
+
+  const indexByDate = new Map();
+  timeline.forEach((d, i) => indexByDate.set(d, i));
+
+  const toAxisPos = (date) => {
+    const idx = indexByDate.get(date);
+    if (idx === undefined) return 0;
+    if (timeline.length <= 1) return 0;
+    return idx / (timeline.length - 1);
+  };
+
+  const historyPositions = historyDates.map(toAxisPos);
+  const forecastPositions = forecastDates.map(toAxisPos);
+  const actualPositions = actualDates.map(toAxisPos);
 
   const forecastPositionByDate = new Map();
   forecastDates.forEach((date, index) => {
