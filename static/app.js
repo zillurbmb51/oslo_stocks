@@ -1,4 +1,5 @@
 const API_BASE = window.APP_API_BASE || window.location.origin;
+const tickerSearch = document.getElementById("ticker-search");
 const tickerSelect = document.getElementById("ticker-select");
 const chartDiv = document.getElementById("chart");
 const commentaryDiv = document.getElementById("commentary");
@@ -62,9 +63,15 @@ function sortTickerMetrics(metrics) {
 
 function renderTickerOptions(selectedTicker) {
   const sorted = sortTickerMetrics(tickerMetrics);
+  const query = (tickerSearch?.value || "").trim().toUpperCase();
+
   tickerSelect.innerHTML = "";
 
-  sorted.forEach((item) => {
+  const filtered = !query
+    ? sorted
+    : sorted.filter((item) => String(item.ticker).toUpperCase().includes(query));
+
+  filtered.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.ticker;
     option.textContent = `${item.ticker} (${formatRatio(item.prediction_ratio)})`;
@@ -73,6 +80,13 @@ function renderTickerOptions(selectedTicker) {
     }
     tickerSelect.appendChild(option);
   });
+
+  if (filtered.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No tickers found";
+    tickerSelect.appendChild(option);
+  }
 }
 
 function horizonToDaysFromToday(horizon) {
