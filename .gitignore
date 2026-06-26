@@ -11,3 +11,10 @@ ios/App/build/
 *.pyc
 *.pyo
 *.pyd
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.secret
