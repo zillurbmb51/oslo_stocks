@@ -23,27 +23,22 @@ Usage:
     HF_HOME=/path/to/cache python timesfm_forecast.py
 """
 import argparse
-import logging
-import os
 import warnings
-from datetime import date
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 
 from utils import (
     DATA_DIR,
-    HORIZON_MAP,
     load_all_history,
-    generate_comment,
-    log_trend_extrapolate,
+    build_forecast_row,
+    save_forecast_results,
+    setup_logger,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 TIMESFM_HORIZON = 252   # 1 year; extrapolate beyond
 
@@ -174,32 +169,10 @@ def main(output_dir: Path, batch_size: int) -> None:
 
         for j, ticker in enumerate(batch_tickers):
             yhat = np.asarray(yhat_batch[j]).reshape(-1)
-
             last_price = float(history[ticker]["Close"].iloc[-1])
+            rows.append(build_forecast_row(ticker, yhat, last_price, extrapolate="1y"))
 
-            result: Dict[str, float] = {}
-            for col, bdays in HORIZON_MAP:
-                idx = bdays - 1
-                if idx < len(yhat):
-                    # yhat[idx] may be a small array depending on timesfm version.
-                    val = np.asarray(yhat[idx]).reshape(-1)[0]
-                    result[col] = round(max(float(val), 0.0), 4)
-                else:
-                    v6m = result.get("price_6m")
-                    v1y = result.get("price_1y")
-                    if v1y and last_price > 0:
-                        result[col] = round(
-                            log_trend_extrapolate(last_price, v1y, 252, bdays), 4
-                        )
-
-
-            comment = generate_comment(ticker, last_price, result)
-            rows.append({"ticker": ticker, "comment": comment, **result})
-
-    today = date.today().isoformat()
-    out_path = output_dir / f"timesfm_osl_{today}_single_run.tsv"
-    pd.DataFrame(rows).to_csv(out_path, sep="\t", index=False)
-    logger.info("Saved %d rows → %s", len(rows), out_path)
+    save_forecast_results(rows, output_dir, "timesfm", logger)
 
 
 if __name__ == "__main__":

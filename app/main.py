@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .config import normalize_ticker
 from .data_loader import (
     load_model_commentaries,
     load_multi_run_forecasts,
@@ -102,7 +103,7 @@ def list_ticker_metrics():
 
 @app.get("/api/forecast/{ticker}", response_model=ForecastMultiRun)
 def get_forecast(ticker: str):
-    key = ticker.strip().upper()
+    key = normalize_ticker(ticker)
     runs_raw = TICKER_TO_FORECAST.get(key)
     if not runs_raw:
         raise HTTPException(status_code=404, detail="Ticker not found")
@@ -112,7 +113,7 @@ def get_forecast(ticker: str):
 
 @app.get("/api/commentary/{ticker}", response_model=CommentaryResponse)
 def get_commentary(ticker: str):
-    key = ticker.strip().upper()
+    key = normalize_ticker(ticker)
     comments = TICKER_TO_COMMENTARIES.get(key)
     if not comments:
         raise HTTPException(status_code=404, detail="Ticker not found")
@@ -133,7 +134,7 @@ def get_commentary(ticker: str):
 
 @app.get("/api/history/{ticker}")
 def get_history(ticker: str):
-    key = ticker.strip().upper()
+    key = normalize_ticker(ticker)
     hist = TICKER_TO_HISTORY.get(key)
     if hist is None:
         raise HTTPException(status_code=404, detail="No history for this ticker")
@@ -142,7 +143,7 @@ def get_history(ticker: str):
 
 @app.get("/api/actual/{ticker}", response_model=ActualSeries)
 def get_actual(ticker: str):
-    key = ticker.strip().upper()
+    key = normalize_ticker(ticker)
     actual = load_actual_prices().get(key)
     if actual is None:
         return ActualSeries(ticker=key, dates=[], prices=[])
