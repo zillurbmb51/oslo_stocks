@@ -537,6 +537,30 @@ tickerSelect?.addEventListener("change", async (event) => {
   }
 });
 
+// Make the search box behave like the dropdown:
+// - filter dropdown options as user types
+// - when user hits Enter, select the first matching ticker and load it
+// - also load the ticker when the user clicks an option from the dropdown
+tickerSearch?.addEventListener("input", () => {
+  // Keep dropdown options filtered to search results
+  renderTickerOptions(tickerSelect.value);
+});
+
+tickerSearch?.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+
+  const query = (tickerSearch.value || "").trim().toUpperCase();
+  if (!query) return;
+
+  const sorted = sortTickerMetrics(tickerMetrics);
+  const filtered = sorted.filter((item) => String(item.ticker).toUpperCase().includes(query));
+  if (!filtered.length) return;
+
+  const first = filtered[0].ticker;
+  tickerSelect.value = first;
+  await updateTicker(first);
+});
+
 loadTickers();
 
 window.addEventListener("resize", () => {
