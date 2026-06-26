@@ -1,8 +1,11 @@
+import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Base data paths
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -131,15 +134,31 @@ def load_rationales() -> Dict[str, str]:
     where TICKER matches the 'ticker' strings used in
     your forecast CSVs and history sheet names.
     """
-    df_raw = pd.read_csv(
-        RATIONALES_FILE,
-        engine="python",
-        quotechar='"',
-        sep=",",
-        on_bad_lines="warn",
-        encoding="latin-1",
-        dtype={"ticker": "string"},
-    )
+    if not RATIONALES_FILE.exists():
+        logger.warning("Rationales file not found: %s", RATIONALES_FILE)
+        return {}
+
+    try:
+        df_raw = pd.read_csv(
+            RATIONALES_FILE,
+            engine="python",
+            quotechar='"',
+            sep=",",
+            on_bad_lines="warn",
+            encoding="latin-1",
+            dtype={"ticker": "string"},
+        )
+    except Exception as exc:
+        logger.error("Failed to read rationales file %s: %s", RATIONALES_FILE, exc)
+        return {}
+
+    required_cols = {"ticker", "comment", "run_start"}
+    if not required_cols.issubset(df_raw.columns):
+        logger.error(
+            "Rationales file missing required columns. Expected %s, got %s",
+            required_cols, set(df_raw.columns),
+        )
+        return {}
 
     df_raw["clean_comment"] = df_raw["comment"].apply(clean_comment)
 
@@ -183,10 +202,13 @@ def load_model_commentaries() -> Dict[str, Dict[str, str]]:
         try:
             df = pd.read_csv(source["path"], sep=source["sep"])
         except FileNotFoundError:
-            # Missing artifact in a particular deploy build; keep the service running.
+            logger.warning("Commentary source file missing: %s", source["path"])
             continue
-        except Exception:
-            # Keep the service running even if one source file is malformed.
+        except Exception as exc:
+            logger.error(
+                "Failed to parse commentary source %s (%s): %s",
+                source["label"], source["path"], exc,
+            )
             continue
 
         if "ticker" not in df.columns or "comment" not in df.columns:
@@ -247,12 +269,23 @@ def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
     ]
 
     for source_index, source in enumerate(FORECAST_SOURCES, start=1):
-        df = pd.read_csv(source["path"], sep=source["sep"])
+        if not source["path"].exists():
+            logger.warning("Forecast source file missing: %s (%s)", source["label"], source["path"])
+            continue
+
+        try:
+            df = pd.read_csv(source["path"], sep=source["sep"])
+        except Exception as exc:
+            logger.error(
+                "Failed to read forecast source %s (%s): %s",
+                source["label"], source["path"], exc,
+            )
+            continue
 
         # Determine which price_* columns are present
         available = [(h_label, col) for (h_label, col) in horizon_map if col in df.columns]
         if not available:
-            # This file has no usable forecast horizons
+            logger.warning("Forecast source %s has no usable price columns", source["label"])
             continue
 
         for _, row in df.iterrows():
@@ -313,12 +346,20 @@ def load_history() -> Dict[str, Dict[str, List[Any]]]:
         ...
       }
     """
-    all_sheets = pd.read_excel(
-        HISTORY_FILE,
-        sheet_name=None,
-        header=[0, 1],
-        index_col=0,
-    )
+    if not HISTORY_FILE.exists():
+        logger.warning("History file not found: %s", HISTORY_FILE)
+        return {}
+
+    try:
+        all_sheets = pd.read_excel(
+            HISTORY_FILE,
+            sheet_name=None,
+            header=[0, 1],
+            index_col=0,
+        )
+    except Exception as exc:
+        logger.error("Failed to read history file %s: %s", HISTORY_FILE, exc)
+        return {}
 
     history: Dict[str, Dict[str, List[Any]]] = {}
 
@@ -365,11 +406,21 @@ def load_actual_prices() -> Dict[str, Dict[str, List[Any]]]:
       date,ticker,price
     """
     if not ACTUALS_FILE.exists():
+        logger.info("Actual prices file not found: %s (this is normal on first deploy)", ACTUALS_FILE)
         return {}
 
-    df = pd.read_csv(ACTUALS_FILE, dtype={"ticker": "string"})
+    try:
+        df = pd.read_csv(ACTUALS_FILE, dtype={"ticker": "string"})
+    except Exception as exc:
+        logger.error("Failed to read actual prices file %s: %s", ACTUALS_FILE, exc)
+        return {}
+
     required = {"date", "ticker", "price"}
     if not required.issubset(df.columns):
+        logger.error(
+            "Actual prices file missing required columns. Expected %s, got %s",
+            required, set(df.columns),
+        )
         return {}
 
     df = df.dropna(subset=["date", "ticker", "price"]).copy()
