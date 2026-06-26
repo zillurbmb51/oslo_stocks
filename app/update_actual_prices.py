@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from zoneinfo import ZoneInfo
 from datetime import datetime
 import re
@@ -8,9 +7,10 @@ import csv
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
 
-
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-ACTUALS_FILE = DATA_DIR / "oslo_actual_prices.csv"
+try:
+    from .config import DATA_DIR, ACTUALS_FILE
+except ImportError:
+    from config import DATA_DIR, ACTUALS_FILE
 EURONEXT_URL = "https://live.euronext.com/pd_es/data/stocks/download?mics=XOSL"
 OSLO_TZ = ZoneInfo("Europe/Oslo")
 

@@ -15,9 +15,7 @@ Usage:
     python xgboost_forecast.py [--output-dir PATH] [--workers N]
 """
 import argparse
-import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import date
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -31,10 +29,11 @@ from utils import (
     load_all_history,
     generate_comment,
     log_trend_extrapolate,
+    save_forecast_results,
+    setup_logger,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # Feature engineering configuration
 LAG_DAYS = [1, 2, 3, 5, 10, 21, 63, 126, 252]
@@ -156,10 +155,7 @@ def main(output_dir: Path, workers: int) -> None:
                 _, row = res
                 rows.append(row)
 
-    today = date.today().isoformat()
-    out_path = output_dir / f"xgboost_osl_{today}_single_run.tsv"
-    pd.DataFrame(rows).to_csv(out_path, sep="\t", index=False)
-    logger.info("Saved %d rows → %s", len(rows), out_path)
+    save_forecast_results(rows, output_dir, "xgboost", logger)
 
 
 if __name__ == "__main__":

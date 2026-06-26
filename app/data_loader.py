@@ -1,14 +1,14 @@
 import re
-from pathlib import Path
 from typing import Dict, List, Any
 
 import pandas as pd
 
-# Base data paths
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-RATIONALES_FILE = DATA_DIR / "ticker_rationales_osl_parallel.csv"
-HISTORY_FILE = DATA_DIR / "oslo_stock_exchange_all_companies.xlsx"
-ACTUALS_FILE = DATA_DIR / "oslo_actual_prices.csv"
+from .config import (
+    DATA_DIR,
+    ACTUALS_FILE,
+    RATIONALES_FILE,
+    normalize_ticker,
+)
 
 FORECAST_SOURCES = [
     # Keep only the requested prediction sources.
@@ -146,9 +146,7 @@ def load_rationales() -> Dict[str, str]:
     # Normalize ticker: trim + uppercase only.
     # DO NOT strip ".OL" etc., because you said tickers in all CSVs match
     # sheet names in the history file.
-    df_raw["ticker_norm"] = (
-        df_raw["ticker"].astype(str).str.strip().str.upper()
-    )
+    df_raw["ticker_norm"] = df_raw["ticker"].apply(normalize_ticker)
 
     df_unique = (
         df_raw.dropna(subset=["clean_comment"])
@@ -194,7 +192,7 @@ def load_model_commentaries() -> Dict[str, Dict[str, str]]:
 
 
         df = df.copy()
-        df["ticker_norm"] = df["ticker"].astype(str).str.strip().str.upper()
+        df["ticker_norm"] = df["ticker"].apply(normalize_ticker)
         df["clean_comment"] = df["comment"].apply(clean_comment)
 
         for _, row in df.iterrows():
@@ -256,11 +254,9 @@ def load_multi_run_forecasts() -> Dict[str, List[Dict[str, Any]]]:
             continue
 
         for _, row in df.iterrows():
-            raw_ticker = str(row.get("ticker", "")).strip()
-            if not raw_ticker:
+            base_ticker = normalize_ticker(str(row.get("ticker", "")))
+            if not base_ticker:
                 continue
-            # Normalize: uppercase only, no stripping of ".OL"
-            base_ticker = raw_ticker.upper()
 
             horizons: List[str] = []
             values: List[float] = []
@@ -302,59 +298,18 @@ def load_history() -> Dict[str, Dict[str, List[Any]]]:
     """
     Load historical close prices from oslo_stock_exchange_all_companies.xlsx.
 
-    - One sheet per ticker; you said sheet names match your ticker strings.
-    - Row 0: ["Price", "Close", "High", "Low", "Open", "Volume"]
-    - Row 1: ["Ticker", "<TICKER>", ...]
-    - Index: "Date"
-
     Returns:
-      {
-        "2020": {"dates": [...], "closes": [...]},
-        ...
-      }
+      { "TICKER": {"dates": [...], "closes": [...]}, ... }
     """
-    all_sheets = pd.read_excel(
-        HISTORY_FILE,
-        sheet_name=None,
-        header=[0, 1],
-        index_col=0,
-    )
+    from forecasting.utils import load_all_history
 
-    history: Dict[str, Dict[str, List[Any]]] = {}
-
-    for sheet_name, df in all_sheets.items():
-        base_ticker = str(sheet_name).strip().upper()
-
-        close_col = None
-        for col in df.columns:
-            lvl0, lvl1 = col
-            if str(lvl0).strip().lower() == "close":
-                close_col = col
-                break
-
-        if close_col is None:
-            continue
-
-        df_reset = df.reset_index()
-        date_col_name = df_reset.columns[0]
-        df_hist = df_reset[[date_col_name, close_col]].copy()
-        df_hist.columns = ["Date", "Close"]
-
-        df_hist = df_hist.dropna(subset=["Date", "Close"])
-        df_hist["Date"] = pd.to_datetime(df_hist["Date"])
-
-        df_hist["Close"] = (
-            df_hist["Close"].astype(str).str.replace(",", ".", regex=False).astype(float)
-        )
-
-        df_hist = df_hist.sort_values("Date")
-
-        history[base_ticker] = {
-            "dates": df_hist["Date"].dt.strftime("%Y-%m-%d").tolist(),
-            "closes": df_hist["Close"].tolist(),
+    return {
+        ticker: {
+            "dates": df["Date"].dt.strftime("%Y-%m-%d").tolist(),
+            "closes": df["Close"].tolist(),
         }
-
-    return history
+        for ticker, df in load_all_history(min_rows=0).items()
+    }
 
 
 def load_actual_prices() -> Dict[str, Dict[str, List[Any]]]:
@@ -373,7 +328,7 @@ def load_actual_prices() -> Dict[str, Dict[str, List[Any]]]:
         return {}
 
     df = df.dropna(subset=["date", "ticker", "price"]).copy()
-    df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
+    df["ticker"] = df["ticker"].apply(normalize_ticker)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
     df = df.dropna(subset=["date", "price"])
