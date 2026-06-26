@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 from typing import Dict, List, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from .data_loader import (
@@ -23,15 +25,27 @@ from .models import (
 )
 
 
-app = FastAPI(title="MyStocks OSL")
+app = FastAPI(title="MyStocks OSL", docs_url=None, redoc_url=None)
+
+_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "").split(",")
+_allowed_origins = [o.strip() for o in _allowed_origins if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins or ["*"],
+    allow_credentials=bool(_allowed_origins),
+    allow_methods=["GET"],
+    allow_headers=["Accept", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 TICKER_TO_COMMENTARIES: Dict[str, Dict[str, str]] = {}
 TICKER_TO_FORECAST: Dict[str, List[Dict[str, Any]]] = {}
