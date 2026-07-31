@@ -1,24 +1,24 @@
-#!/opt/homebrew/bin/bash -l
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Log everything
-exec >> /Users/zillurrahman/cron_update.log 2>&1
+# Configure these via environment variables or edit before first use.
+CONDA_BASE="${CONDA_BASE:-$(conda info --base 2>/dev/null || echo "")}"
+CONDA_ENV="${CONDA_ENV:-osl_forecast}"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+LOG_FILE="${LOG_FILE:-${PROJECT_DIR}/cron_update.log}"
+
+exec >> "${LOG_FILE}" 2>&1
 echo "===== $(date) ====="
 
-# 1. Find your conda base path once in your normal terminal:
-#    conda info --base
-#    and replace the path below with that.
-source /Users/zillurrahman/anaconda3/etc/profile.d/conda.sh
+if [ -n "${CONDA_BASE}" ] && [ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]; then
+    source "${CONDA_BASE}/etc/profile.d/conda.sh"
+    conda activate "${CONDA_ENV}"
+fi
 
-# 2. Activate environment
-conda activate osl_forecast
+cd "${PROJECT_DIR}"
 
-# 3. Go to project directory
-cd /Users/zillurrahman/Desktop/Desktop/zillur/work/stock/myfirst_website
-
-# 4. Run your script
 python3 app/update_actual_prices.py
 
-# 5. Commit and push
 git add data/oslo_actual_prices.csv
 git commit -m "Updated actual price $(date +%F)" || echo "Nothing to commit"
 git push
