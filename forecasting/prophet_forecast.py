@@ -12,10 +12,8 @@ Usage:
     python prophet_forecast.py [--output-dir PATH] [--workers N]
 """
 import argparse
-import logging
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import date
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -24,14 +22,14 @@ from tqdm import tqdm
 
 from utils import (
     DATA_DIR,
-    HORIZON_MAP,
     MAX_HORIZON_BDAYS,
     load_all_history,
-    generate_comment,
+    build_forecast_row,
+    save_forecast_results,
+    setup_logger,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def _forecast_one(ticker: str, df: pd.DataFrame) -> Optional[Tuple[str, Dict]]:
@@ -58,15 +56,9 @@ def _forecast_one(ticker: str, df: pd.DataFrame) -> Optional[Tuple[str, Dict]]:
         last_date = df["Date"].max()
         future_fc = fc[fc["ds"] > last_date].reset_index(drop=True)
 
-        result: Dict[str, float] = {}
-        for col, bdays in HORIZON_MAP:
-            idx = bdays - 1  # 0-indexed
-            if idx < len(future_fc):
-                result[col] = round(max(float(future_fc.iloc[idx]["yhat"]), 0), 4)
-
         last_price = float(df["Close"].iloc[-1])
-        comment = generate_comment(ticker, last_price, result)
-        return ticker, {"ticker": ticker, "comment": comment, **result}
+        yhat = future_fc["yhat"].values
+        return ticker, build_forecast_row(ticker, yhat, last_price, extrapolate=None)
 
     except Exception as exc:
         logger.warning("Prophet failed for %s: %s", ticker, exc)
@@ -91,10 +83,7 @@ def main(output_dir: Path, workers: int) -> None:
                 _, row = res
                 rows.append(row)
 
-    today = date.today().isoformat()
-    out_path = output_dir / f"prophet_osl_{today}_single_run.tsv"
-    pd.DataFrame(rows).to_csv(out_path, sep="\t", index=False)
-    logger.info("Saved %d rows → %s", len(rows), out_path)
+    save_forecast_results(rows, output_dir, "prophet", logger)
 
 
 if __name__ == "__main__":

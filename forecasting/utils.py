@@ -1,6 +1,8 @@
 """Shared utilities for Oslo Stock Exchange forecast scripts."""
+import logging
+from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -30,11 +32,11 @@ MAX_HORIZON_BDAYS = 1260   # 5 years in business days
 MIN_HISTORY_ROWS = 60      # minimum rows to attempt any forecast
 
 
-def load_all_history() -> Dict[str, pd.DataFrame]:
+def load_all_history(min_rows: int = MIN_HISTORY_ROWS) -> Dict[str, pd.DataFrame]:
     """
     Load all ticker history sheets from the Excel file.
     Returns {TICKER: DataFrame(Date, Close)} sorted by date ascending.
-    Skips tickers with fewer than MIN_HISTORY_ROWS rows.
+    Skips tickers with fewer than *min_rows* rows (default MIN_HISTORY_ROWS).
     """
     all_sheets = pd.read_excel(
         HISTORY_FILE, sheet_name=None, header=[0, 1], index_col=0
@@ -67,7 +69,7 @@ def load_all_history() -> Dict[str, pd.DataFrame]:
         )
         dh = dh.sort_values("Date").reset_index(drop=True)
 
-        if len(dh) < MIN_HISTORY_ROWS:
+        if len(dh) < min_rows:
             continue
 
         result[ticker] = dh
@@ -149,3 +151,70 @@ def generate_comment(ticker: str, last_price: float,
         )
 
     return " ".join(parts)
+
+
+def build_forecast_row(
+    ticker: str,
+    yhat: np.ndarray,
+    last_price: float,
+    extrapolate: Optional[str] = "1y",
+) -> Dict[str, Any]:
+    """
+    Build a forecast result dict from a 1-D predicted price array.
+
+    yhat[i] corresponds to business day i+1 ahead.
+
+    extrapolate controls how horizons beyond len(yhat) are filled:
+      "1y"   - log-trend from the 1-year forecast
+      "6m1y" - 6-month trend, falling back to 1-year
+      None   - skip horizons beyond the array
+    """
+    result: Dict[str, float] = {}
+    for col, bdays in HORIZON_MAP:
+        idx = bdays - 1
+        if idx < len(yhat):
+            val = float(np.asarray(yhat[idx]).reshape(-1)[0])
+            result[col] = round(max(val, 0.0), 4)
+        elif extrapolate == "6m1y":
+            v6m = result.get("price_6m")
+            v1y = result.get("price_1y")
+            if v6m and v1y and v6m > 0 and last_price > 0:
+                result[col] = round(
+                    log_trend_extrapolate(last_price, v6m, 126, bdays), 4
+                )
+            elif v1y and last_price > 0:
+                result[col] = round(
+                    log_trend_extrapolate(last_price, v1y, 252, bdays), 4
+                )
+        elif extrapolate == "1y":
+            v1y = result.get("price_1y")
+            if v1y and last_price > 0:
+                result[col] = round(
+                    log_trend_extrapolate(last_price, v1y, 252, bdays), 4
+                )
+
+    comment = generate_comment(ticker, last_price, result)
+    return {"ticker": ticker, "comment": comment, **result}
+
+
+def save_forecast_results(
+    rows: list,
+    output_dir: Path,
+    model_name: str,
+    logger: logging.Logger,
+) -> Path:
+    """Write forecast rows to a date-stamped TSV."""
+    today = date.today().isoformat()
+    out_path = output_dir / f"{model_name}_osl_{today}_single_run.tsv"
+    pd.DataFrame(rows).to_csv(out_path, sep="\t", index=False)
+    logger.info("Saved %d rows -> %s", len(rows), out_path)
+    return out_path
+
+
+def setup_logger(name: str) -> logging.Logger:
+    """Configure and return a logger with the standard forecast format."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    return logging.getLogger(name)
