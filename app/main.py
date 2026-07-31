@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -21,6 +22,8 @@ from .models import (
     CommentaryResponse,
     CommentaryBlock,
 )
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="MyStocks OSL")
@@ -64,19 +67,41 @@ def compute_prediction_ratio(runs: List[Dict[str, Any]]) -> float:
 @app.on_event("startup")
 def startup_event():
     global TICKER_TO_COMMENTARIES, TICKER_TO_FORECAST, TICKER_TO_HISTORY, TICKER_TO_ACTUAL, TICKER_TO_RATIO
-    TICKER_TO_COMMENTARIES = load_model_commentaries()
-    TICKER_TO_FORECAST = load_multi_run_forecasts()
-    TICKER_TO_HISTORY = load_history()
-    TICKER_TO_ACTUAL = load_actual_prices()
+
+    try:
+        TICKER_TO_COMMENTARIES = load_model_commentaries()
+    except Exception as exc:
+        logger.error("Failed to load commentaries: %s", exc)
+        TICKER_TO_COMMENTARIES = {}
+
+    try:
+        TICKER_TO_FORECAST = load_multi_run_forecasts()
+    except Exception as exc:
+        logger.error("Failed to load forecasts: %s", exc)
+        TICKER_TO_FORECAST = {}
+
+    try:
+        TICKER_TO_HISTORY = load_history()
+    except Exception as exc:
+        logger.error("Failed to load history: %s", exc)
+        TICKER_TO_HISTORY = {}
+
+    try:
+        TICKER_TO_ACTUAL = load_actual_prices()
+    except Exception as exc:
+        logger.error("Failed to load actual prices: %s", exc)
+        TICKER_TO_ACTUAL = {}
+
     TICKER_TO_RATIO = {
         ticker: compute_prediction_ratio(runs)
         for ticker, runs in TICKER_TO_FORECAST.items()
     }
-    # Optional debug:
-    # print("Loaded:",
-    #       len(TICKER_TO_COMMENT), "comments;",
-    #       len(TICKER_TO_FORECAST), "forecasts;",
-    #       len(TICKER_TO_HISTORY), "histories")
+
+    logger.info(
+        "Startup complete: %d commentaries, %d forecasts, %d histories, %d actuals",
+        len(TICKER_TO_COMMENTARIES), len(TICKER_TO_FORECAST),
+        len(TICKER_TO_HISTORY), len(TICKER_TO_ACTUAL),
+    )
 
 
 @app.get("/api/tickers", response_model=TickerList)
@@ -137,16 +162,24 @@ def get_history(ticker: str):
     hist = TICKER_TO_HISTORY.get(key)
     if hist is None:
         raise HTTPException(status_code=404, detail="No history for this ticker")
-    return {"ticker": key, "dates": hist["dates"], "closes": hist["closes"]}
+    dates = hist.get("dates", [])
+    closes = hist.get("closes", [])
+    if not dates or not closes:
+        raise HTTPException(status_code=404, detail="No history data for this ticker")
+    return {"ticker": key, "dates": dates, "closes": closes}
 
 
 @app.get("/api/actual/{ticker}", response_model=ActualSeries)
 def get_actual(ticker: str):
     key = ticker.strip().upper()
-    actual = load_actual_prices().get(key)
+    actual = TICKER_TO_ACTUAL.get(key)
     if actual is None:
         return ActualSeries(ticker=key, dates=[], prices=[])
-    return ActualSeries(ticker=key, dates=actual["dates"], prices=actual["prices"])
+    return ActualSeries(
+        ticker=key,
+        dates=actual.get("dates", []),
+        prices=actual.get("prices", []),
+    )
 
 
 @app.get("/")

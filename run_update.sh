@@ -1,5 +1,7 @@
 #!/opt/homebrew/bin/bash -l
 
+set -euo pipefail
+
 # Log everything
 exec >> /Users/zillurrahman/cron_update.log 2>&1
 echo "===== $(date) ====="
@@ -16,10 +18,19 @@ conda activate osl_forecast
 cd /Users/zillurrahman/Desktop/Desktop/zillur/work/stock/myfirst_website
 
 # 4. Run your script
-python3 app/update_actual_prices.py
+if ! python3 app/update_actual_prices.py; then
+    echo "ERROR: update_actual_prices.py failed at $(date)" >&2
+    exit 1
+fi
 
 # 5. Commit and push
 git add data/oslo_actual_prices.csv
-git commit -m "Updated actual price $(date +%F)" || echo "Nothing to commit"
-git push
+git commit -m "Updated actual price $(date +%F)" || { echo "Nothing to commit"; exit 0; }
+
+if ! git push; then
+    echo "ERROR: git push failed at $(date)" >&2
+    exit 1
+fi
+
+echo "===== Update completed successfully at $(date) ====="
 
