@@ -35,7 +35,7 @@ jobs:
             forecasting/requirements-repair.txt
       - run: pip install -r forecasting/requirements-repair.txt
       - name: Indicator calculation tests
-        run: node --test tests/indicators.test.cjs tests/dashboard.test.cjs
+        run: node --test tests/*.test.cjs
       - name: Regression tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Fetch and validate session history

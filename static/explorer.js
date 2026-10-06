@@ -3,7 +3,7 @@
   let state=null, indicators=null;
   const config={responsive:true,displaylogo:false,scrollZoom:false,toImageButtonOptions:{format:'png',scale:2}};
   const axis={gridcolor:'#29344c',zeroline:false,automargin:true};
-  const base=()=>({paper_bgcolor:'#111a2a',plot_bgcolor:'#111a2a',font:{color:'#dce5f5'},hovermode:'x unified',dragmode:'zoom',margin:{l:65,r:25,t:35,b:65},legend:{orientation:'h',y:1.15},autosize:true});
+  const base=()=>({paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'#0b1526',font:{color:'#dce5f5'},hovermode:'x unified',dragmode:'zoom',margin:{l:65,r:25,t:35,b:65},legend:{orientation:'h',y:1.15},autosize:true});
   const trace=(name,x,y,color,more={})=>({name,x,y,type:'scatter',mode:'lines',connectgaps:false,line:{color,width:2},...more});
   const range=(dates,count)=>count==='all'?undefined:[dates[Math.max(0,dates.length-Number(count))],dates.at(-1)];
   const padded = values => {const v=values.filter(Number.isFinite);if(!v.length)return undefined;const lo=Math.min(...v),hi=Math.max(...v),pad=(hi-lo)*.08||Math.abs(hi)*.02||1;return [lo-pad,hi+pad];};
@@ -60,11 +60,28 @@
     const readings=[['Bollinger Bands',upper===null?'Warming up':last>upper?'Above upper band':last<lower?'Below lower band':'Inside bands'],['SMA 50',sma===null?'Warming up':`${fmt((last/sma-1)*100)}% from average`],['EMA 20',ema===null?'Warming up':`${fmt((last/ema-1)*100)}% from average`],['RSI 14',`${fmt(rsi)} · ${rsi===null?'warming up':rsi>70?'above 70':rsi<30?'below 30':'30–70 range'}`],['MACD histogram',fmt(macd)],['ROC 10',`${fmt(roc)}%`],['Volatility 20',`${fmt(vol)}% annualized`]];
     for(const [label,value] of readings){const card=document.createElement('div');const small=document.createElement('small'),strong=document.createElement('strong');small.textContent=label;strong.textContent=value;card.append(small,strong);el('indicator-readings').append(card);}
   }
+  function renderDecision(status) {
+    const summary=DecisionInsights.summarize(state.data,indicators,status);
+    el('decision-title').textContent=summary.title;
+    el('decision-panel').dataset.tone=summary.tone;
+    el('decision-date').textContent=`${state.ticker} · ${summary.date}`;
+    el('decision-next').textContent=summary.next;
+    const grid=el('decision-cards');grid.replaceChildren();
+    for(const card of summary.cards){
+      const article=document.createElement('article');article.className='decision-card';article.dataset.tone=card.tone;
+      for(const [tag,key] of [['small','label'],['h3','title'],['p','evidence'],['p','meaning']]){
+        const node=document.createElement(tag);node.textContent=card[key];node.className=key;article.append(node);
+      }grid.append(article);
+    }
+  }
   window.MarketExplorer={async load(ticker,forecast,isCurrent){
-    const response=await fetch(`${window.APP_API_BASE||window.location.origin}/api/explorer/${encodeURIComponent(ticker)}`);
+    const [response,status]=await Promise.all([
+      fetch(`${window.APP_API_BASE||window.location.origin}/api/explorer/${encodeURIComponent(ticker)}`),
+      fetch(`${window.APP_API_BASE||window.location.origin}/api/market-status?ticker=${encodeURIComponent(ticker)}`).then(r=>r.ok?r.json():null).catch(()=>null)
+    ]);
     if(!response.ok)throw new Error('Explorer data unavailable');const data=await response.json();if(!isCurrent())return;
     const old=state?.ticker===ticker?el('forecast-origin').value:null;
-    state={ticker,forecast,data};indicators=TechnicalIndicators.calculate(data.prices);
+    state={ticker,forecast,data};indicators=TechnicalIndicators.calculate(data.prices);renderDecision(status);
     const select=el('forecast-origin');select.replaceChildren();
     for(const o of [...data.origins].reverse()){const option=document.createElement('option');option.value=o.date;option.textContent=o.date;select.append(option);}
     // Start with a past origin so subsequent outcomes are visible on first load.

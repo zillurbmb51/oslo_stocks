@@ -192,7 +192,7 @@
   </style>
 
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  <link rel="stylesheet" href="/static/dashboard.css" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=20261006-insights-1" />
 </head>
 <body>
   <div class="page">
@@ -222,6 +222,14 @@
       <div id="watchlist" class="watchlist" aria-label="Saved tickers"></div>
       <section id="metrics" class="metrics" aria-label="Stock metrics"></section>
       <section class="insight-panel"><span class="insight-icon">✦</span><div><p class="eyebrow">THE DATA AT A GLANCE</p><p id="insight">Select a ticker to explore its model outlook.</p></div></section>
+      <section id="decision-panel" class="decision-panel" aria-label="Decision support" data-tone="neutral">
+        <p class="eyebrow">DECISION SUPPORT · EVIDENCE BEFORE ACTION</p>
+        <h2 id="decision-title" aria-live="polite">Building your research summary…</h2>
+        <p id="decision-date" class="decision-date"></p>
+        <div id="decision-cards" class="decision-cards"></div>
+        <div class="decision-next"><h3>What to check next</h3><p id="decision-next"></p></div>
+        <details><summary>What this summary can and cannot tell you</summary><p>These rules summarize trailing price behavior, not a personalized buy/sell recommendation or a confidence score. Trend compares the latest close with SMA 50 and EMA 20; momentum checks agreement between MACD histogram and 10-observation return. Volatility uses the previous 252 available readings (minimum 60); the top/bottom quartile labels are descriptive. Forecast evidence uses available resolved 20-session targets for this ticker, with a minimum of 20 origins. Targets overlap and the simulations use retrospectively adjusted data. Financial statements, news, liquidity, fees, taxes, and your investment horizon are not evaluated here.</p><p>Learn about <a href="https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI" target="_blank" rel="noopener">RSI interpretation</a> and <a href="https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/macd" target="_blank" rel="noopener">MACD limitations</a>.</p></details>
+      </section>
       <style>
         #ticker-search {
           background: linear-gradient(180deg, rgba(14, 31, 55, 0.98), rgba(8, 18, 34, 0.98));
@@ -243,20 +251,21 @@
         }
       </style>
 
-      <div class="chart-container">
+      <div class="chart-container price-section">
         <div class="panel-heading"><div><p class="eyebrow">PRICE EXPLORER</p><h2 id="chart-heading">History & forecasts</h2></div><span>Click a legend item to toggle a model</span></div><label for="chart-view">Chart view</label> <select id="chart-view"><option value="combined">History + dated predictions + actuals</option><option value="legacy">Archived model projections</option></select><div class="explorer-controls" id="forecast-controls"><label>Forecast origin <select id="forecast-origin"></select></label><label>History window <select id="history-window"><option value="63">3 months</option><option value="126" selected>6 months</option><option value="252">1 year</option><option value="all">All history</option></select></label></div><div id="chart"></div><p id="forecast-insight" class="reading" aria-live="polite"></p><div class="table-scroll"><table id="outcomes-table"><thead><tr><th>Trading days</th><th>Target date</th><th>Prediction</th><th>Actual</th><th>Error vs actual</th></tr></thead><tbody id="outcome-rows"></tbody></table></div><p class="chart-note" id="chart-note">Daily closing prices are split-adjusted and quoted in NOK.</p>
       </div>
 
-      <section class="chart-container" aria-label="Technical indicators">
+      <section class="chart-container technical-section" aria-label="Technical indicators">
         <div class="panel-heading"><div><p class="eyebrow">TREND · MOMENTUM · VOLATILITY</p><h2>Technical indicator explorer</h2></div><span>Seven indicators · shared timeline</span></div>
         <div class="explorer-controls"><label>Period <select id="indicator-window"><option value="63">3 months</option><option value="126" selected>6 months</option><option value="252">1 year</option><option value="all">All history</option></select></label><label>Momentum panel <select id="momentum-indicator"><option value="rsi">RSI (14)</option><option value="macd">MACD (12, 26, 9)</option><option value="roc">Rate of change (10)</option></select></label><label><input id="show-bb" type="checkbox" checked> Bollinger Bands (20, 2σ)</label><label><input id="show-sma" type="checkbox" checked> SMA (50)</label><label><input id="show-ema" type="checkbox" checked> EMA (20)</label></div>
         <div id="indicator-chart"></div><div id="indicator-readings" class="indicator-readings" aria-live="polite"></div>
         <details><summary>How to read these indicators</summary><p>BB uses a 20-observation mean ± two population standard deviations. SMA averages 50 observations; EMA uses a 20-observation seed and exponential smoothing. RSI uses Wilder’s 14-period smoothing (30/70 are reference levels). MACD subtracts EMA 26 from EMA 12, with an EMA 9 signal. ROC is the percentage change over 10 observations. Volatility is the 20-return sample standard deviation of log returns, annualized with √252.</p><p>All calculations use available validated dividend- and split-adjusted closes, with full-history warm-up. Missing observations are not filled; periods count available observations. These describe price behavior, not reliable buy/sell instructions. <a href="https://www.fidelity.com/learning-center/trading-investing/technical-analysis" target="_blank" rel="noopener">Indicator guide ↗</a></p></details>
       </section>
 
-      <section class="model-panel"><div class="panel-heading"><div><p class="eyebrow">COMPARE THE OUTLOOK</p><h2>Archived model snapshot</h2></div><span>Final available point per run · horizons may differ</span></div><div class="table-scroll"><table><thead><tr><th>Model / run</th><th>Horizon</th><th>Projected price</th><th>Comparison status</th></tr></thead><tbody id="model-rows"></tbody></table></div></section>
-      <section class="model-panel"><div class="panel-heading"><div><p class="eyebrow">TESTED AGAINST NO CHANGE</p><h2>Adaptive ensemble backtest</h2></div><span id="backtest-date"></span></div><p class="chart-note">Mean absolute log-return error in percentage points; lower is better. Uses dividend-adjusted prices for the accepted subset. This is not a trading-profit measure.</p><div class="table-scroll"><table><thead><tr><th>Trading days</th><th>No-change error</th><th>Adaptive error</th><th>Comparison</th></tr></thead><tbody id="backtest-rows"></tbody></table></div></section>
-      <h2 class="commentary-heading">Behind the forecasts</h2>
+      <section class="model-panel archive-section"><div class="panel-heading"><div><p class="eyebrow">COMPARE THE OUTLOOK</p><h2>Archived model snapshot</h2></div><span>Final available point per run · horizons may differ</span></div><div class="table-scroll"><table><thead><tr><th>Model / run</th><th>Horizon</th><th>Projected price</th><th>Comparison status</th></tr></thead><tbody id="model-rows"></tbody></table></div></section>
+      <section class="model-panel backtest-section"><div class="panel-heading"><div><p class="eyebrow">TESTED AGAINST NO CHANGE</p><h2>Adaptive ensemble backtest</h2></div><span id="backtest-date"></span></div><p class="chart-note">Mean absolute log-return error in percentage points; lower is better. Uses dividend-adjusted prices for the accepted subset. This is not a trading-profit measure.</p><div class="table-scroll"><table><thead><tr><th>Trading days</th><th>No-change error</th><th>Adaptive error</th><th>Comparison</th></tr></thead><tbody id="backtest-rows"></tbody></table></div></section>
+      <h2 class="commentary-heading">Archived model commentary</h2>
+      <p class="chart-note">Historical model narratives below are not refreshed with current prices. Use the dated decision-support summary above for current technical readings.</p>
       <div id="commentary">
         <span class="ticker-label">Select a ticker</span> to see commentary for each model run.
       </div>
@@ -266,7 +275,8 @@
 
   <script src="/static/config.js?v=20260417-1"></script>
   <script src="/static/indicators.js?v=20261006-1"></script>
-  <script src="/static/explorer.js?v=20261006-1"></script>
-  <script src="/static/app.js?v=20261006-charts-1"></script>
+  <script src="/static/decision-insights.js?v=20261006-1"></script>
+  <script src="/static/explorer.js?v=20261006-insights-1"></script>
+  <script src="/static/app.js?v=20261006-insights-1"></script>
 </body>
 </html>

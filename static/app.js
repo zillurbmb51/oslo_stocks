@@ -278,6 +278,10 @@ async function updateTicker(ticker) {
   document.getElementById("load-status").textContent = `Loading ${ticker}…`;
   document.getElementById("ticker-quality").textContent = `Checking ${ticker} validation…`;
   chartDiv.style.opacity = "0.4";
+  document.getElementById("decision-title").textContent = `Loading insights for ${ticker}…`;
+  document.getElementById("decision-cards").replaceChildren();
+  document.getElementById("decision-date").textContent = "";
+  document.getElementById("decision-next").textContent = "";
   try {
     await Promise.all([updateCommentary(ticker, version), updateChart(ticker, version), updateMarketStatus(ticker, version)]);
     if (version !== requestVersion) return;
@@ -285,6 +289,9 @@ async function updateTicker(ticker) {
   } catch (error) {
     if (version !== requestVersion) return;
     document.getElementById("load-status").textContent = `Could not load ${ticker}. Use Refresh to retry.`;
+    document.getElementById("decision-title").textContent = "Insights unavailable — refresh to retry";
+    document.getElementById("decision-cards").replaceChildren();
+    document.getElementById("decision-next").textContent = "";
     document.getElementById("metrics").replaceChildren();
     document.getElementById("model-rows").replaceChildren();
     document.getElementById("insight").textContent = "Insights unavailable until the data loads successfully.";
