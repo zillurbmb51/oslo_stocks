@@ -79,7 +79,8 @@ class MarketStore:
         for path,label in [(bootstrap,'bundled snapshot'),(cache,'cached published snapshot')]:
             try:
                 candidate=decode_bundle(path.read_bytes())
-                if self.data is None or candidate['cutoff']>=self.data['cutoff']:
+                if self.data is None or (candidate['cutoff']>=self.data['cutoff'] and
+                        (not self.data.get('forecast_comparisons') or candidate.get('forecast_comparisons'))):
                     self.data=candidate;self.origin=label
             except (OSError,ValueError,KeyError,TypeError,EOFError):
                 pass
@@ -92,6 +93,8 @@ class MarketStore:
             with urlopen(request,timeout=30) as response:
                 raw=response.read(10_000_001)
             candidate=decode_bundle(raw)
+            if self.data and self.data.get('forecast_comparisons') and not candidate.get('forecast_comparisons'):
+                raise ValueError('Published snapshot is missing the comparison archive')
             if self.data and candidate['cutoff']<self.data['cutoff']:
                 raise ValueError('Older published snapshot rejected')
             if self.data and len(candidate['series'])<.8*len(self.data['series']):

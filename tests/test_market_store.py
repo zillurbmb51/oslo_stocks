@@ -58,6 +58,17 @@ class MarketStoreTests(unittest.TestCase):
         self.assertEqual(decode_bundle(encode(data))['forecast_comparisons'],data['forecast_comparisons'])
         data['forecast_comparisons']['TEST'][0]['price']=100.
         with self.assertRaises(ValueError):decode_bundle(encode(data))
+    def test_old_release_cannot_remove_new_chart_data(self):
+        data=bundle();data['series']['TEST']['adjusted']=[90.]
+        data['forecast_comparisons']={'TEST':[dict(date='2026-01-05',price=90.,points=[[1,'2026-01-06',91.]])]}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'initial.gz';path.write_bytes(encode(data))
+            cache=Path(directory)/'cache.gz';cache.write_bytes(encode(bundle()))
+            store=MarketStore(path,cache)
+            self.assertIn('forecast_comparisons',store.data)
+            with patch('app.market_store.urlopen',return_value=io.BytesIO(encode(bundle()))):store.refresh()
+            self.assertIn('forecast_comparisons',store.data)
+            self.assertIsNotNone(store.error)
     def test_explorer_excludes_unknown_ticker_and_uses_adjusted_basis(self):
         from app import main
         data=bundle();data['series']['TEST']['adjusted']=[90.]
