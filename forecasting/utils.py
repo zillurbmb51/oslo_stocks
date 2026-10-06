@@ -30,6 +30,25 @@ MAX_HORIZON_BDAYS = 1260   # 5 years in business days
 MIN_HISTORY_ROWS = 60      # minimum rows to attempt any forecast
 
 
+def load_actual_history() -> Dict[str, pd.DataFrame]:
+    """Load refreshed daily closes written by app/update_actual_prices.py."""
+    actual_file = DATA_DIR / "oslo_actual_prices.csv"
+    if not actual_file.exists():
+        return {}
+
+    actual = pd.read_csv(actual_file, parse_dates=["date"])
+    actual = actual.rename(columns={"date": "Date", "ticker": "Ticker", "price": "Close"})
+    actual["Ticker"] = actual["Ticker"].astype(str).str.strip().str.upper()
+    actual["Close"] = pd.to_numeric(actual["Close"], errors="coerce")
+    actual = actual.dropna(subset=["Date", "Ticker", "Close"])
+    actual = actual[np.isfinite(actual["Close"]) & (actual["Close"] > 0)]
+
+    return {
+        ticker: group[["Date", "Close"]].sort_values("Date").reset_index(drop=True)
+        for ticker, group in actual.groupby("Ticker")
+    }
+
+
 def load_all_history() -> Dict[str, pd.DataFrame]:
     """
     Load all ticker history sheets from the Excel file.
@@ -65,12 +84,28 @@ def load_all_history() -> Dict[str, pd.DataFrame]:
             .str.replace(",", ".", regex=False)
             .astype(float)
         )
+        dh = dh[np.isfinite(dh["Close"]) & (dh["Close"] > 0)]
         dh = dh.sort_values("Date").reset_index(drop=True)
 
-        if len(dh) < MIN_HISTORY_ROWS:
-            continue
-
         result[ticker] = dh
+
+    # The Excel workbook is the long historical source; the CSV is the daily
+    # refresh. CSV values win on duplicate dates so corrected closes are used.
+    for ticker, actual in load_actual_history().items():
+        if ticker not in result:
+            continue
+        result[ticker] = (
+            pd.concat([result[ticker], actual], ignore_index=True)
+            .drop_duplicates(subset=["Date"], keep="last")
+            .sort_values("Date")
+            .reset_index(drop=True)
+        )
+
+    result = {
+        ticker: history
+        for ticker, history in result.items()
+        if len(history) >= MIN_HISTORY_ROWS
+    }
 
     return result
 

@@ -55,15 +55,12 @@ Recommended flow:
 3. Railway should build from the root `Dockerfile`.
 4. After deploy, visit `/static/index.html` on the Railway URL.
 
-### Scheduler for actual prices
+### Automatic prices
 
-Run this command every weekday at 16:00 Oslo time:
-
-```bash
-python3 app/update_actual_prices.py
-```
-
-If your host only supports UTC schedules, convert Oslo time accordingly for daylight saving.
+The scheduled GitHub Actions workflow publishes a validated data release on
+weekdays at 17:35 UTC. Render retrieves it without a commit or redeployment.
+See [AUTOMATIC_UPDATES.md](AUTOMATIC_UPDATES.md) for setup, failure handling and
+platform limitations. The root URL now redirects to the dashboard.
 
 ## Android and iOS
 

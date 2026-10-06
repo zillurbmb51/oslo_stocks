@@ -1,0 +1,2 @@
+-r requirements-backtest.txt
+yfinance>=1.7,<2

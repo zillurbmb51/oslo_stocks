@@ -32,11 +32,14 @@ class ActualSeries(BaseModel):
     ticker: str
     dates: List[str]
     prices: List[float]
+    source: str = "legacy"
+    validation_status: str = "unverified"
 
 
 class TickerMetric(BaseModel):
     ticker: str
     prediction_ratio: float
+    validation_status: str = "legacy"
 
 
 class TickerMetricList(BaseModel):

@@ -14,6 +14,71 @@ const FORECAST_LABELS = {
 };
 
 let tickerMetrics = [];
+let requestVersion = 0;
+let activeTicker = "";
+let busy = false;
+const saved = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const persist = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
+let watchlist = saved("osl-watchlist", []);
+if (!Array.isArray(watchlist)) watchlist = [];
+const money = value => Number.isFinite(value) ? value.toLocaleString("en-GB", {maximumFractionDigits: 2, minimumFractionDigits: 2}) : "—";
+function renderWatchlist() {
+  const container = document.getElementById("watchlist");
+  container.replaceChildren();
+  watchlist.filter(ticker => tickerMetrics.some(item => item.ticker === ticker)).forEach(ticker => {
+    const button = document.createElement("button");
+    button.textContent = ticker;
+    button.onclick = () => { tickerSearch.value = ""; renderTickerOptions(ticker); updateTicker(ticker); };
+    container.append(button);
+  });
+  const watching = watchlist.includes(activeTicker);
+  document.getElementById("watch-toggle").textContent = watching ? "★ Saved ticker" : "☆ Save ticker";
+  document.getElementById("watch-toggle").setAttribute("aria-pressed", String(watching));
+}
+function renderInsights(ticker, forecast, history, actual) {
+  const observations = [
+    ...(history?.dates || []).map((date, i) => ({date, value: history.closes?.[i]})),
+    ...(actual?.dates || []).map((date, i) => ({date, value: actual.prices?.[i]}))
+  ].filter(point => point.date && Number.isFinite(point.value)).sort((a,b) => a.date.localeCompare(b.date));
+  const latest = observations.at(-1);
+  const runs = (forecast.runs || []).map((run, index) => {
+    const end = Math.min(run.values?.length || 0, run.horizons?.length || 0) - 1;
+    return {label: getRunLabel(run, index), value: run.values?.[end], horizon: run.horizons?.[end], color: getColor(index)};
+  }).filter(run => Number.isFinite(run.value));
+  const values = runs.map(run => run.value).sort((a,b) => a-b);
+  const median = values.length ? (values[Math.floor((values.length - 1)/2)] + values[Math.floor(values.length/2)])/2 : null;
+  const low = values[0], high = values.at(-1);
+  const audited = actual?.source === "validated_snapshot";
+  const change = !audited && latest?.value > 0 && median !== null ? (median/latest.value - 1)*100 : null;
+  const cards = [
+    ["Last observed price", money(latest?.value), latest ? `Observed ${latest.date}` : "No price history available", "#7fdac8"],
+    [audited ? "Archived model endpoint" : "Median model endpoint", money(median), "Archived runs; not refreshed daily", "#b8a4ff"],
+    [audited ? "Price validation" : "Endpoint difference", audited ? (actual.validation_status === "accepted" ? "Passed" : "Excluded") : change === null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`, audited ? "No comparison across unverified price bases" : "Median endpoint vs. last observed price", change !== null && change < 0 ? "#ff95a3" : "#7fdac8"],
+    ["Available model runs", String(runs.length), `Endpoint range ${money(low)} – ${money(high)}`, "#f7ca7e"]
+  ];
+  const container = document.getElementById("metrics"); container.replaceChildren();
+  cards.forEach(([label,value,note,color]) => {
+    const card = document.createElement("article"); card.className = "metric"; card.style.setProperty("--tone", color);
+    [ ["small",label], ["strong",value], ["p",note] ].forEach(([tag,text]) => {const node = document.createElement(tag); node.textContent = text; card.append(node);});
+    container.append(card);
+  });
+  document.getElementById("chart-heading").textContent = `${ticker} · History & forecasts`;
+  document.getElementById("insight").textContent = runs.length ? `${runs.length} model runs have final projections between ${money(low)} and ${money(high)}. ${latest ? `The latest available observation is ${money(latest.value)} on ${latest.date}.` : "No observed price is available for comparison."} These endpoints may cover different horizons; their range describes model variation, not a confidence interval.` : "No usable model endpoints are available for this ticker.";
+  if (audited) document.getElementById("insight").textContent = latest
+    ? `${ticker}: latest validated close ${money(latest.value)} NOK on ${latest.date}. These prices passed provider consistency checks. Archived model runs are not refreshed or rebased to this price series; their implied returns are not compared here.`
+    : `${ticker} is excluded from the validated price snapshot. Review the data-quality status above; archived projections remain available for reference.`;
+  const rows = document.getElementById("model-rows"); rows.replaceChildren();
+  runs.forEach(run => {
+    const row = document.createElement("tr");
+    const delta = !audited && latest?.value > 0 ? (run.value/latest.value - 1)*100 : null;
+    [run.label, run.horizon, money(run.value), delta === null ? (audited ? "Not rebased" : "—") : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`].forEach((text,index) => {
+      const cell = document.createElement("td"); cell.textContent = text;
+      if(index === 0) { const dot = document.createElement("span"); dot.className = "model-dot"; dot.style.background = run.color; cell.prepend(dot); }
+      if(index === 3 && delta !== null) cell.className = delta >= 0 ? "positive" : "negative";
+      row.append(cell);
+    }); rows.append(row);
+  });
+}
 
 function getColor(idx) {
   const palette = [
@@ -71,10 +136,18 @@ function renderTickerOptions(selectedTicker) {
     ? sorted
     : sorted.filter((item) => String(item.ticker).toUpperCase().includes(query));
 
+  if (filtered.length && !filtered.some(item => item.ticker === selectedTicker)) {
+    const prompt = document.createElement("option");
+    prompt.value = "";
+    prompt.textContent = "Choose a match or press Enter";
+    prompt.selected = true;
+    tickerSelect.appendChild(prompt);
+  }
+
   filtered.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.ticker;
-    option.textContent = `${item.ticker} (${formatRatio(item.prediction_ratio)})`;
+    option.textContent = `${item.ticker} · ${item.validation_status === "accepted" ? "Validated prices" : item.validation_status || "Legacy data"}`;
     if (item.ticker === selectedTicker) {
       option.selected = true;
     }
@@ -177,20 +250,30 @@ async function loadTickers() {
   try {
     const data = await fetchJSON(`${API_BASE}/api/ticker-metrics`);
     tickerMetrics = data.tickers || [];
-    renderTickerOptions(tickerMetrics[0]?.ticker || "");
+    const preferred = saved("osl-ticker", "");
+    const selected = tickerMetrics.some(item => item.ticker === preferred) ? preferred : sortTickerMetrics(tickerMetrics).find(item => item.validation_status === "accepted")?.ticker || tickerMetrics[0]?.ticker;
+    renderTickerOptions(selected || "");
+    document.getElementById("universe-count").textContent = tickerMetrics.length;
+    renderWatchlist();
 
     if (tickerMetrics.length > 0) {
-      await updateTicker(tickerMetrics[0].ticker);
+      await updateTicker(selected);
     } else {
       commentaryDiv.textContent = "No tickers available.";
+      document.getElementById("load-status").textContent = "No tickers available in the current dataset.";
     }
   } catch (err) {
     console.error(err);
+    tickerSelect.replaceChildren();
+    const unavailable = document.createElement("option");
+    unavailable.textContent = "Data service unavailable";
+    tickerSelect.append(unavailable);
     commentaryDiv.textContent = "Error loading tickers from backend.";
+    document.getElementById("load-status").textContent = "Could not connect to the data service. Use Refresh to retry.";
   }
 }
 
-async function updateChart(ticker) {
+async function updateChart(ticker, version) {
   const [forecast, history, actual] = await Promise.all([
     fetchJSON(`${API_BASE}/api/forecast/${ticker}`),
     fetch(`${API_BASE}/api/history/${ticker}`)
@@ -201,6 +284,12 @@ async function updateChart(ticker) {
       .catch(() => ({ dates: [], prices: [] })),
   ]);
 
+  if (version !== requestVersion) return;
+  renderInsights(ticker, forecast, history, actual);
+  if (actual?.source === "validated_snapshot") {
+    await renderSnapshotChart(ticker, forecast, actual);
+    return;
+  }
   const traces = [];
   let historyDates = [];
   let historyValues = [];
@@ -247,8 +336,8 @@ async function updateChart(ticker) {
     Plotly.purge(chartDiv);
     await Plotly.newPlot(chartDiv, [], {
       title: `Forecast – ${(forecast && forecast.ticker) || ticker}`,
-      paper_bgcolor: "#020617",
-      plot_bgcolor: "#020617",
+      paper_bgcolor: "#111a2a",
+      plot_bgcolor: "#111a2a",
       font: { color: "#e5e7eb" },
     }, { responsive: true, displaylogo: false });
     Plotly.Plots.resize(chartDiv);
@@ -399,11 +488,11 @@ async function updateChart(ticker) {
 
   const layout = {
     title: `Forecast – ${(forecast && forecast.ticker) || ticker}`,
-    paper_bgcolor: "#020617",
-    plot_bgcolor: "#020617",
+    paper_bgcolor: "#111a2a",
+    plot_bgcolor: "#111a2a",
     font: { color: "#e5e7eb" },
     autosize: true,
-    margin: { l: 60, r: 20, t: 60, b: 180 },
+    margin: { l: 60, r: 20, t: 60, b: 150 },
     xaxis: {
       title: "Date",
       type: "linear",
@@ -425,7 +514,7 @@ async function updateChart(ticker) {
     legend: {
       orientation: "h",
       yanchor: "top",
-      y: -0.55,
+      y: -0.42,
       xanchor: "center",
       x: 0.5,
     },
@@ -455,10 +544,11 @@ async function updateChart(ticker) {
   Plotly.Plots.resize(chartDiv);
 }
 
-async function updateCommentary(ticker) {
+async function updateCommentary(ticker, version) {
   commentaryDiv.textContent = `Loading commentary for ${ticker}…`;
   const resp = await fetch(`${API_BASE}/api/commentary/${ticker}`);
 
+  if (version !== requestVersion) return false;
   commentaryDiv.innerHTML = "";
 
   if (!resp.ok) {
@@ -477,6 +567,7 @@ async function updateCommentary(ticker) {
   }
 
   const data = await resp.json();
+  if (version !== requestVersion) return false;
   const titleSpan = document.createElement("span");
   titleSpan.className = "ticker-label";
   titleSpan.textContent = `${data.ticker} commentary`;
@@ -517,18 +608,44 @@ async function updateCommentary(ticker) {
 }
 
 async function updateTicker(ticker) {
-  const hasCommentary = await updateCommentary(ticker);
-  if (!hasCommentary) {
-    await nextFrame();
-    await nextFrame();
+  const version = ++requestVersion;
+  activeTicker = ticker;
+  busy = true;
+  persist("osl-ticker", ticker);
+  renderWatchlist();
+  document.getElementById("refresh").disabled = true;
+  document.getElementById("load-status").textContent = `Loading ${ticker}…`;
+  document.getElementById("ticker-quality").textContent = `Checking ${ticker} validation…`;
+  chartDiv.style.opacity = "0.4";
+  try {
+    await Promise.all([updateCommentary(ticker, version), updateChart(ticker, version), updateMarketStatus(ticker, version)]);
+    if (version !== requestVersion) return;
+    document.getElementById("load-status").textContent = `${ticker} · Checked at ${new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})} · Observation dates are shown below.`;
+  } catch (error) {
+    if (version !== requestVersion) return;
+    document.getElementById("load-status").textContent = `Could not load ${ticker}. Use Refresh to retry.`;
+    document.getElementById("metrics").replaceChildren();
+    document.getElementById("model-rows").replaceChildren();
+    document.getElementById("insight").textContent = "Insights unavailable until the data loads successfully.";
+    if (window.Plotly) Plotly.purge(chartDiv);
+    console.error(error);
+  } finally {
+    if (version === requestVersion) {busy = false; chartDiv.style.opacity = "1"; document.getElementById("refresh").disabled = false;}
   }
-  await updateChart(ticker);
-  if (!hasCommentary) {
-    await nextFrame();
-    await updateChart(ticker);
-  }
-  requestAnimationFrame(() => Plotly.Plots.resize(chartDiv));
 }
+
+document.getElementById("watch-toggle").onclick = () => {
+  if (!activeTicker) return;
+  watchlist = watchlist.includes(activeTicker) ? watchlist.filter(ticker => ticker !== activeTicker) : [...watchlist, activeTicker];
+  persist("osl-watchlist", watchlist); renderWatchlist();
+};
+document.getElementById("refresh").onclick = () => activeTicker ? updateTicker(activeTicker) : loadTickers();
+const autoRefresh = document.getElementById("auto-refresh");
+autoRefresh.checked = saved("osl-auto-refresh", true) === true;
+autoRefresh.onchange = () => persist("osl-auto-refresh", autoRefresh.checked);
+setInterval(() => {
+  if (autoRefresh.checked && !document.hidden && !busy && activeTicker) updateTicker(activeTicker);
+}, 5 * 60 * 1000);
 
 tickerSelect?.addEventListener("change", async (event) => {
   const ticker = event.target.value;
@@ -561,6 +678,8 @@ tickerSearch?.addEventListener("keydown", async (event) => {
   await updateTicker(first);
 });
 
+document.getElementById("chart-view").addEventListener("change", () => { if (activeTicker) updateTicker(activeTicker); });
+
 loadTickers();
 
 window.addEventListener("resize", () => {
@@ -571,3 +690,57 @@ window.addEventListener("resize", () => {
     }
   }, 120);
 });
+
+async function updateMarketStatus(ticker, version) {
+  try {
+    const data = await fetchJSON(`${API_BASE}/api/market-status?ticker=${encodeURIComponent(ticker)}`);
+    if (version !== requestVersion) return;
+    const panel = document.querySelector(".automation-panel");
+    panel.classList.toggle("stale", data.stale || !data.available);
+    document.getElementById("data-freshness").textContent = data.available
+      ? `${data.stale ? "Awaiting newer data" : "Current snapshot"} · ${data.cutoff}` : "Market snapshot unavailable";
+    document.getElementById("automation-status").textContent = data.available
+      ? `${data.counts.accepted} tickers accepted · ${data.counts.quarantined} quarantined · ${data.counts.unavailable} unavailable. Updates run weekdays at 17:35 UTC (18:35 winter / 19:35 summer in Oslo). No daily GitHub push required.${data.error ? " The last download failed; showing the last good snapshot." : ""}`
+      : "No validated snapshot is available. Check the update runs for a failed or disabled workflow.";
+    const quality = data.ticker_status;
+    document.getElementById("ticker-quality").textContent = quality
+      ? `${ticker}: ${quality.status === "accepted" ? `passed provider checks; latest close ${quality.last_accepted_date}` : `${quality.status} — ${(quality.issues || []).join(", ").replaceAll("_", " ")}`}. Checks do not independently verify every corporate action.`
+      : `${ticker}: no validation record available.`;
+    const body = document.getElementById("backtest-rows"); body.replaceChildren();
+    document.getElementById("backtest-date").textContent = data.backtest ? `Data through ${data.backtest.as_of}` : "Unavailable";
+    for (const horizon of [1,5,20,30,60,100]) {
+      const baseline = data.backtest?.summary.find(row => row.horizon_days === horizon && row.model === "no_change");
+      const adaptive = data.backtest?.summary.find(row => row.horizon_days === horizon && row.model === "adaptive_ensemble");
+      if (!baseline || !adaptive) continue;
+      const row = document.createElement("tr");
+      [horizon, baseline.mae_log_return_pct.toFixed(3), adaptive.mae_log_return_pct.toFixed(3),
+       adaptive.mae_log_return_pct < baseline.mae_log_return_pct ? "Adaptive lower error" : "No-change lower / equal error"].forEach(value => {
+        const cell=document.createElement("td"); cell.textContent=value; row.append(cell);
+      }); body.append(row);
+    }
+  } catch {
+    if (version !== requestVersion) return;
+    document.getElementById("data-freshness").textContent = "Freshness check failed";
+    document.getElementById("ticker-quality").textContent = "Validation status unavailable; retry Refresh.";
+  }
+}
+
+async function renderSnapshotChart(ticker, forecast, actual) {
+  const archived = document.getElementById("chart-view").value === "legacy";
+  const traces = archived ? (forecast.runs || []).map((run, index) => ({
+    x: run.horizons, y: run.values, type:"scatter", mode:"lines+markers", name:getRunLabel(run,index),
+    line:{color:getColor(index),width:2}
+  })) : [{x:actual.dates,y:actual.prices,type:"scatter",mode:"lines",name:"Validated close",line:{color:"#7fdac8",width:2}}];
+  document.getElementById("chart-heading").textContent = `${ticker} · ${archived ? "Archived model projections" : "Validated closing prices"}`;
+  document.getElementById("chart-note").textContent = archived
+    ? "Archived projections at their original relative horizons. Training cutoffs and price bases are unverified; these are not newly generated forecasts."
+    : "Daily closing prices in NOK, adjusted for splits by the provider. Excluded tickers have no validated series; dividend-adjusted data is used separately for the backtest.";
+  await Plotly.react(chartDiv, traces, {
+    paper_bgcolor:"#111a2a",plot_bgcolor:"#111a2a",font:{color:"#e5e7eb"},
+    margin:{l:65,r:20,t:30,b:100},autosize:true,
+    xaxis:{type:archived ? "category" : "date",gridcolor:"#29344c",title:archived ? "Original forecast horizon" : "Session date"},
+    yaxis:{title:archived ? "Archived projected price" : "NOK · split-adjusted close",gridcolor:"#29344c"},
+    legend:{orientation:"h",y:-.25},
+    annotations: !archived && !actual.dates.length ? [{text:"No validated price series for this ticker",showarrow:false,x:.5,y:.5,xref:"paper",yref:"paper"}] : []
+  },{responsive:true,displaylogo:false});
+}

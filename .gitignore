@@ -11,3 +11,11 @@ ios/App/build/
 *.pyc
 *.pyo
 *.pyd
+# Local research archives; production publishes a compact validated snapshot.
+data/history_repair/
+data/adaptive_backtest/
+data/automation-snapshot/
+data/*.sqlite*
+data/quote_refresh_audit.json
+lightning_logs/
+forecasting/lightning_logs/

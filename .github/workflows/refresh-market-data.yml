@@ -1,0 +1,82 @@
+name: Refresh market data
+on:
+  schedule:
+    # After Oslo's close in both winter and summer. No developer laptop required.
+    - cron: '35 17 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-market-data.yml'
+      - 'forecasting/repair_history.py'
+      - 'forecasting/walk_forward_backtest.py'
+      - 'scripts/build_market_bundle.py'
+      - 'data/corporate_action_references.json'
+permissions:
+  contents: write
+concurrency:
+  group: market-data-publisher
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            forecasting/requirements-backtest.txt
+            forecasting/requirements-repair.txt
+      - run: pip install -r forecasting/requirements-repair.txt
+      - name: Regression tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Fetch and validate session history
+        shell: bash
+        run: |
+          set -euo pipefail
+          AS_OF=$(TZ=Europe/Oslo date +%F)
+          python forecasting/repair_history.py --as-of "$AS_OF" --resume data/automation-snapshot
+          CUTOFF=$(python -c "import json; print(json.load(open('data/automation-snapshot/manifest.json'))['cutoff'])")
+          python forecasting/walk_forward_backtest.py --as-of "$CUTOFF" \
+            --history-file data/automation-snapshot/prices.csv --price-basis adjusted_close \
+            --archive data/automation-snapshot/backtest.sqlite \
+            --output-dir data/automation-snapshot/backtest
+          python forecasting/report_backtest.py --output-dir data/automation-snapshot/backtest
+      - name: Build compact publication
+        shell: bash
+        run: |
+          mkdir -p previous public-data
+          gh release download market-data --pattern latest.json.gz --dir previous || true
+          python scripts/build_market_bundle.py --snapshot data/automation-snapshot \
+            --previous previous/latest.json.gz --output public-data/latest.json.gz
+      - name: Publish prices without a commit or deployment
+        shell: bash
+        run: |
+          if ! gh release view market-data >/dev/null 2>&1; then
+            gh release create market-data --target "$GITHUB_SHA" --title "Automated market data" \
+              --notes "Validated session prices and backtest summaries. Updated by the scheduled market-data workflow; no source-code commit required." \
+              --prerelease --latest=false
+          fi
+          gh release upload market-data public-data/latest.json.gz --clobber
+      - name: Retain audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-data-audit
+          retention-days: 14
+          path: |
+            data/automation-snapshot/config.json
+            data/automation-snapshot/manifest.json
+            data/automation-snapshot/issues.csv
+            data/automation-snapshot/coverage.csv
+            data/automation-snapshot/actions.csv
+            data/automation-snapshot/gaps.csv
+            data/automation-snapshot/backtest/*.csv
+            data/automation-snapshot/backtest/*.json
+            data/automation-snapshot/backtest/*.txt

@@ -1,5 +1,7 @@
 #!/opt/homebrew/bin/bash -l
 
+set -euo pipefail
+
 # Log everything
 exec >> /Users/zillurrahman/cron_update.log 2>&1
 echo "===== $(date) ====="

@@ -5,6 +5,12 @@ from zoneinfo import ZoneInfo
 from datetime import datetime
 import re
 import csv
+import json
+import math
+import hashlib
+
+import pandas as pd
+import exchange_calendars as xcals
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
 
@@ -29,12 +35,14 @@ def parse_price(value) -> float | None:
 
     raw = re.sub(r"[^0-9,.\-]", "", raw)
     if raw.count(",") > 0 and raw.count(".") > 0:
-        raw = raw.replace(".", "").replace(",", ".")
+        raw = (raw.replace(".", "").replace(",", ".") if raw.rfind(",") > raw.rfind(".")
+               else raw.replace(",", ""))
     elif raw.count(",") > 0:
         raw = raw.replace(",", ".")
 
     try:
-        return float(raw)
+        value = float(raw)
+        return value if math.isfinite(value) and value > 0 else None
     except ValueError:
         return None
 
@@ -58,45 +66,73 @@ class ActualRow:
     price: float
 
 
+def parse_closing_date(value: str) -> str | None:
+    """Only explicit calendar dates; a time-of-day or download date is insufficient."""
+    raw = str(value or "").strip()
+    if not re.search(r"\d{4}", raw):
+        return None
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            pass
+    try:
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if stamp.tzinfo:
+            stamp = stamp.astimezone(OSLO_TZ)
+        return stamp.date().isoformat()
+    except ValueError:
+        return None
+
+
+def parse_actual_rows(text: str, oslo_date: str, now=None) -> tuple[list[ActualRow], list[dict]]:
+    lines = [line for line in text.splitlines() if line.strip()]
+    header_index = next((i for i,line in enumerate(lines) if "Symbol" in line and "Closing Price" in line), None)
+    if header_index is None:
+        raise RuntimeError("Missing closing-price headers in the Euronext download")
+    reader = csv.DictReader(lines[header_index:], delimiter=";")
+    columns = {normalize_column(name):name for name in (reader.fieldnames or [])}
+    required = {"symbol", "closing_price", "closing_price_datetime", "currency"}
+    if not required.issubset(columns):
+        raise RuntimeError("Closing price, explicit closing timestamp and currency are required")
+    now = pd.Timestamp(now or datetime.now(OSLO_TZ))
+    if now.tzinfo is None: raise ValueError("now must include timezone")
+    results, rejected, seen = [], [], set()
+    for row in reader:
+        ticker = (row.get(columns['symbol']) or '').strip().upper()
+        if not ticker: continue
+        date = parse_closing_date(row.get(columns['closing_price_datetime']))
+        price = parse_price(row.get(columns['closing_price']))
+        reason = None
+        if date is None: reason = 'missing_explicit_closing_date'
+        elif date > oslo_date: reason = 'future_closing_date'
+        elif (row.get(columns['currency']) or '').strip().upper() != 'NOK': reason = 'unexpected_currency'
+        elif price is None: reason = 'invalid_closing_price'
+        else:
+            cal = xcals.get_calendar('XOSL',start=pd.Timestamp(date)-pd.Timedelta(days=7),end=pd.Timestamp(date)+pd.Timedelta(days=7))
+            if not cal.is_session(date): reason = 'not_exchange_session'
+            elif cal.session_close(date) + pd.Timedelta(minutes=30) > now: reason = 'session_not_final'
+        if reason:
+            rejected.append({'ticker':ticker,'reason':reason})
+            continue
+        key = (date,ticker)
+        if key in seen: continue
+        seen.add(key)
+        results.append(ActualRow(date=date,ticker=ticker,price=price))
+    return results, rejected
+
+
 def fetch_actual_rows(oslo_date: str) -> list[ActualRow]:
     text = fetch_csv_text()
-    lines = [line for line in text.splitlines() if line.strip()]
-    header_index = next(
-        (idx for idx, line in enumerate(lines) if "Symbol;" in line and "last Price" in line),
-        None,
-    )
-    if header_index is None:
-        raise RuntimeError("Could not find Symbol/last Price headers in the Euronext download.")
-
-    csv_text = "\n".join(lines[header_index:])
-    reader = csv.DictReader(csv_text.splitlines(), delimiter=";")
-    if reader.fieldnames is None:
-        raise RuntimeError("Euronext download did not contain a CSV header row.")
-
-    normalized_to_original: dict[str, str] = {normalize_column(name): name for name in reader.fieldnames}
-    if not {"symbol", "last_price"}.issubset(normalized_to_original.keys()):
-        raise RuntimeError("The Euronext download is missing symbol/last price columns.")
-
-    symbol_key = normalized_to_original["symbol"]
-    last_price_key = normalized_to_original["last_price"]
-
-    results: list[ActualRow] = []
-    seen: set[tuple[str, str]] = set()
-    for row in reader:
-        ticker = (row.get(symbol_key) or "").strip().upper()
-        if not ticker:
-            continue
-        price = parse_price(row.get(last_price_key))
-        if price is None:
-            continue
-
-        key = (oslo_date, ticker)
-        if key in seen:
-            continue
-        seen.add(key)
-        results.append(ActualRow(date=oslo_date, ticker=ticker, price=price))
-
-    return results
+    rows, rejected = parse_actual_rows(text, oslo_date)
+    DATA_DIR.mkdir(parents=True,exist_ok=True)
+    (DATA_DIR/'quote_refresh_audit.json').write_text(json.dumps({
+        'fetched_at':datetime.now(OSLO_TZ).isoformat(), 'source_url':EURONEXT_URL,
+        'source_sha256':hashlib.sha256(text.encode()).hexdigest(),
+        'accepted':len(rows),'rejected':rejected},indent=2))
+    if not rows:
+        raise RuntimeError("No verified, completed-session closing prices. Refusing to stamp last quotes with today's date. Use forecasting/repair_history.py for session-dated history.")
+    return rows
 
 
 def read_existing_actuals() -> dict[tuple[str, str], float]:
@@ -120,11 +156,14 @@ def read_existing_actuals() -> dict[tuple[str, str], float]:
 
 def write_actuals(rows: dict[tuple[str, str], float]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with ACTUALS_FILE.open("w", encoding="utf-8", newline="") as f:
+    temporary = ACTUALS_FILE.with_suffix(".csv.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["date", "ticker", "price"])
         writer.writeheader()
         for (date, ticker), price in sorted(rows.items(), key=lambda item: (item[0][0], item[0][1])):
             writer.writerow({"date": date, "ticker": ticker, "price": price})
+
+    temporary.replace(ACTUALS_FILE)
 
 
 def upsert_actuals() -> list[ActualRow]:

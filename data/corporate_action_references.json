@@ -1,0 +1,10 @@
+[
+  {
+    "ticker": "KOG",
+    "date": "2026-04-23",
+    "type": "demerger",
+    "handling": "quarantine",
+    "description": "One Kongsberg Maritime share distributed per KOG share. Requires a verified spin-off valuation; do not treat as an ordinary split or cash dividend.",
+    "source_url": "https://live.euronext.com/en/products/equities/company-news/2026-04-21-kongsberg-gruppen-asa-key-information-regarding-demerger"
+  }
+]

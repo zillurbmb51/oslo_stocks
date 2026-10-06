@@ -1,9 +1,13 @@
+import asyncio
+from contextlib import suppress
 from pathlib import Path
 from typing import Dict, List, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+from .market_store import STORE
 
 from .data_loader import (
     load_model_commentaries,
@@ -62,21 +66,41 @@ def compute_prediction_ratio(runs: List[Dict[str, Any]]) -> float:
 
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     global TICKER_TO_COMMENTARIES, TICKER_TO_FORECAST, TICKER_TO_HISTORY, TICKER_TO_ACTUAL, TICKER_TO_RATIO
     TICKER_TO_COMMENTARIES = load_model_commentaries()
     TICKER_TO_FORECAST = load_multi_run_forecasts()
-    TICKER_TO_HISTORY = load_history()
+    TICKER_TO_HISTORY = {} if STORE.data else load_history()
     TICKER_TO_ACTUAL = load_actual_prices()
     TICKER_TO_RATIO = {
         ticker: compute_prediction_ratio(runs)
         for ticker, runs in TICKER_TO_FORECAST.items()
     }
+    app.state.market_poll = asyncio.create_task(STORE.poll())
     # Optional debug:
     # print("Loaded:",
     #       len(TICKER_TO_COMMENT), "comments;",
     #       len(TICKER_TO_FORECAST), "forecasts;",
     #       len(TICKER_TO_HISTORY), "histories")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    task = getattr(app.state, "market_poll", None)
+    if task:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@app.get("/api/market-status")
+def market_status(ticker: str | None = None):
+    return STORE.status(ticker.strip().upper() if ticker else None)
+
+
+@app.get("/healthz")
+def health():
+    return {"status": "ok", "market_cutoff": STORE.data["cutoff"] if STORE.data else None}
 
 
 @app.get("/api/tickers", response_model=TickerList)
@@ -88,12 +112,32 @@ def list_tickers():
 @app.get("/api/ticker-metrics", response_model=TickerMetricList)
 def list_ticker_metrics():
     metrics = [
-        TickerMetric(ticker=ticker, prediction_ratio=TICKER_TO_RATIO.get(ticker, 0.0))
+        TickerMetric(ticker=ticker, prediction_ratio=TICKER_TO_RATIO.get(ticker, 0.0),
+                     validation_status=STORE.data["coverage"].get(ticker, {}).get("status", "unavailable") if STORE.data else "legacy")
         for ticker in sorted(set(TICKER_TO_FORECAST.keys()) & set(TICKER_TO_COMMENTARIES.keys()))
     ]
     return TickerMetricList(tickers=metrics)
 
-#@app.get("/api/tickers", response_model=TickerList)
+#@app.on_event("shutdown")
+async def shutdown_event():
+    task = getattr(app.state, "market_poll", None)
+    if task:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@app.get("/api/market-status")
+def market_status(ticker: str | None = None):
+    return STORE.status(ticker.strip().upper() if ticker else None)
+
+
+@app.get("/healthz")
+def health():
+    return {"status": "ok", "market_cutoff": STORE.data["cutoff"] if STORE.data else None}
+
+
+@app.get("/api/tickers", response_model=TickerList)
 #def list_tickers():
     # Only tickers that have *both* commentary and forecasts
 #    tickers = sorted(set(TICKER_TO_COMMENT.keys()) & set(TICKER_TO_FORECAST.keys()))
@@ -134,6 +178,9 @@ def get_commentary(ticker: str):
 @app.get("/api/history/{ticker}")
 def get_history(ticker: str):
     key = ticker.strip().upper()
+    if STORE.data:
+        series = STORE.data["series"].get(key, {"dates": [], "closes": []})
+        return {"ticker": key, **series, "source": "validated_snapshot"}
     hist = TICKER_TO_HISTORY.get(key)
     if hist is None:
         raise HTTPException(status_code=404, detail="No history for this ticker")
@@ -143,6 +190,11 @@ def get_history(ticker: str):
 @app.get("/api/actual/{ticker}", response_model=ActualSeries)
 def get_actual(ticker: str):
     key = ticker.strip().upper()
+    if STORE.data:
+        series = STORE.data["series"].get(key, {"dates": [], "closes": []})
+        status = STORE.data["coverage"].get(key, {}).get("status", "unavailable")
+        return ActualSeries(ticker=key, dates=series["dates"], prices=series["closes"],
+                            source="validated_snapshot", validation_status=status)
     actual = load_actual_prices().get(key)
     if actual is None:
         return ActualSeries(ticker=key, dates=[], prices=[])
@@ -151,4 +203,4 @@ def get_actual(ticker: str):
 
 @app.get("/")
 def root():
-    return {"message": "Go to /static/index.html for the UI."}
+    return RedirectResponse("/static/index.html", status_code=307)

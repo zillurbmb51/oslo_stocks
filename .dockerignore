@@ -10,3 +10,11 @@ ios/
 *.pyd
 dist/
 build/
+.git/
+data/history_repair/
+data/adaptive_backtest/
+data/automation-snapshot/
+data/*.sqlite*
+lightning_logs/
+forecasting/lightning_logs/
+tests/
