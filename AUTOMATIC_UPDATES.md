@@ -12,7 +12,7 @@ a running laptop, or a Render redeployment.
    as usable price series. Compact audit reports are retained for 14 days in
    Actions artifacts.
 5. Render checks that public release on startup and every 15 minutes while
-   awake. The current snapshot is atomically replaced only after validation.
+   awake (retrying after one minute when a download fails). The current snapshot is atomically replaced only after validation.
 
 The release asset is persistent cloud storage. Render's free ephemeral disk is
 only a cache; restarts recover from the release or the bundled bootstrap. No

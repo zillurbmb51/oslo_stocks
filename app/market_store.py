@@ -94,7 +94,7 @@ class MarketStore:
     async def poll(self):
         while True:
             await asyncio.to_thread(self.refresh)
-            await asyncio.sleep(900)
+            await asyncio.sleep(60 if self.error else 900)
 
     def status(self,ticker=None):
         data=self.data
