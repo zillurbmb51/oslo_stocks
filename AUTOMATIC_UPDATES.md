@@ -21,8 +21,10 @@ The workflow uses its repository-scoped `GITHUB_TOKEN` to publish the release.
 
 The root URL redirects to `/static/index.html`. The dashboard shows the snapshot
 cutoff, expected completed session, per-ticker validation, quarantined/unavailable
-counts, and the adaptive-versus-no-change backtest. Its default chart shows only
-validated split-adjusted closing prices. Archived model projections have a
+counts, and the adaptive-versus-no-change backtest. Its default chart combines validated adjusted history, dated walk-forward simulated
+predictions, and actual outcomes on one consistent dividend- and split-adjusted basis.
+The last 126 eligible forecast origins are published per ticker. A separate chart
+computes seven trailing technical indicators from the same adjusted history. Archived model projections have a
 separate view and are not rebased or compared to current prices. Heavy neural
 models are not retrained by the daily workflow.
 

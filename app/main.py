@@ -118,32 +118,6 @@ def list_ticker_metrics():
     ]
     return TickerMetricList(tickers=metrics)
 
-#@app.on_event("shutdown")
-async def shutdown_event():
-    task = getattr(app.state, "market_poll", None)
-    if task:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-
-@app.get("/api/market-status")
-def market_status(ticker: str | None = None):
-    return STORE.status(ticker.strip().upper() if ticker else None)
-
-
-@app.get("/healthz")
-def health():
-    return {"status": "ok", "market_cutoff": STORE.data["cutoff"] if STORE.data else None}
-
-
-@app.get("/api/tickers", response_model=TickerList)
-#def list_tickers():
-    # Only tickers that have *both* commentary and forecasts
-#    tickers = sorted(set(TICKER_TO_COMMENT.keys()) & set(TICKER_TO_FORECAST.keys()))
-#    return TickerList(tickers=tickers)
-
-
 @app.get("/api/forecast/{ticker}", response_model=ForecastMultiRun)
 def get_forecast(ticker: str):
     key = ticker.strip().upper()
@@ -185,6 +159,18 @@ def get_history(ticker: str):
     if hist is None:
         raise HTTPException(status_code=404, detail="No history for this ticker")
     return {"ticker": key, "dates": hist["dates"], "closes": hist["closes"]}
+
+
+@app.get("/api/explorer/{ticker}")
+def get_explorer(ticker: str):
+    key=ticker.strip().upper()
+    data=STORE.data or {}
+    series=data.get("series",{}).get(key,{})
+    return {"ticker":key,"cutoff":data.get("cutoff"),
+            "dates":series.get("dates",[]),"prices":series.get("adjusted",[]),
+            "origins":data.get("forecast_comparisons",{}).get(key,[]),
+            "price_basis":"provider dividend- and split-adjusted NOK",
+            "kind":"retrospective walk-forward simulation"}
 
 
 @app.get("/api/actual/{ticker}", response_model=ActualSeries)

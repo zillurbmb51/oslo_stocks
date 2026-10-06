@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import gzip
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
@@ -32,7 +33,21 @@ def build(snapshot, destination, previous=None):
         old=json.loads(gzip.decompress(previous.read_bytes()))
         if manifest['cutoff']<old['cutoff'] or count<.8*len(old['series']):
             raise ValueError('Regressing date or coverage; retaining previous snapshot')
-    series={ticker:{'dates':g.date.tolist(),'closes':g.close.tolist()} for ticker,g in prices.sort_values('date').groupby('ticker')}
+    series={ticker:{'dates':g.date.tolist(),'closes':g.close.tolist(),'adjusted':g.adjusted_close.tolist()} for ticker,g in prices.sort_values('date').groupby('ticker')}
+    # Keep a compact six-month origin window. Forecast values and observations
+    # come from this exact experiment/snapshot, never a later adjustment basis.
+    with sqlite3.connect(snapshot/'backtest.sqlite') as db:
+        rows=pd.read_sql_query("""SELECT ticker,origin_date,origin_price,horizon_days,
+            target_date,predicted_price FROM forecasts WHERE experiment_id=?
+            AND model='adaptive_ensemble' ORDER BY ticker,origin_date,horizon_days""",
+            db,params=(backtest['experiment_id'],))
+    forecasts={}
+    for ticker, group in rows.groupby('ticker'):
+        origins=sorted(group.origin_date.unique())[-126:]
+        forecasts[ticker]=[dict(date=origin,price=float(g.origin_price.iloc[0]),
+            points=[[int(r.horizon_days),r.target_date,float(r.predicted_price)]
+                    for r in g.itertuples()])
+            for origin,g in group[group.origin_date.isin(origins)].groupby('origin_date')]
     statuses={}
     for record in coverage.to_dict('records'):
         ticker=record.pop('ticker')
@@ -42,7 +57,7 @@ def build(snapshot, destination, previous=None):
     data=dict(schema_version=1,generated_at=datetime.now(timezone.utc).isoformat(),cutoff=manifest['cutoff'],
         source='Yahoo Finance via yfinance',price_basis='split-adjusted close, NOK',
         validation='Provider consistency checks; not comprehensive independent action verification',
-        schedule_utc='17:35 Monday–Friday',series=series,coverage=statuses,
+        forecast_comparisons=forecasts,schedule_utc='17:35 Monday–Friday',series=series,coverage=statuses,
         counts=dict(accepted=count,quarantined=int((coverage.status=='quarantined').sum()),
                     unavailable=int((coverage.status=='fetch_failed').sum()),recovered_sessions=manifest['recovered_sessions']),
         backtest=dict(as_of=backtest['as_of'],price_basis=backtest['price_basis'],

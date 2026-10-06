@@ -244,8 +244,15 @@
       </style>
 
       <div class="chart-container">
-        <div class="panel-heading"><div><p class="eyebrow">PRICE EXPLORER</p><h2 id="chart-heading">History & forecasts</h2></div><span>Click a legend item to toggle a model</span></div><label for="chart-view">Chart view</label> <select id="chart-view"><option value="actual">Validated closing prices</option><option value="legacy">Archived model projections</option></select><div id="chart"></div><p class="chart-note" id="chart-note">Daily closing prices are split-adjusted and quoted in NOK.</p>
+        <div class="panel-heading"><div><p class="eyebrow">PRICE EXPLORER</p><h2 id="chart-heading">History & forecasts</h2></div><span>Click a legend item to toggle a model</span></div><label for="chart-view">Chart view</label> <select id="chart-view"><option value="combined">History + dated predictions + actuals</option><option value="legacy">Archived model projections</option></select><div class="explorer-controls" id="forecast-controls"><label>Forecast origin <select id="forecast-origin"></select></label><label>History window <select id="history-window"><option value="63">3 months</option><option value="126" selected>6 months</option><option value="252">1 year</option><option value="all">All history</option></select></label></div><div id="chart"></div><p id="forecast-insight" class="reading" aria-live="polite"></p><div class="table-scroll"><table id="outcomes-table"><thead><tr><th>Trading days</th><th>Target date</th><th>Prediction</th><th>Actual</th><th>Error vs actual</th></tr></thead><tbody id="outcome-rows"></tbody></table></div><p class="chart-note" id="chart-note">Daily closing prices are split-adjusted and quoted in NOK.</p>
       </div>
+
+      <section class="chart-container" aria-label="Technical indicators">
+        <div class="panel-heading"><div><p class="eyebrow">TREND · MOMENTUM · VOLATILITY</p><h2>Technical indicator explorer</h2></div><span>Seven indicators · shared timeline</span></div>
+        <div class="explorer-controls"><label>Period <select id="indicator-window"><option value="63">3 months</option><option value="126" selected>6 months</option><option value="252">1 year</option><option value="all">All history</option></select></label><label>Momentum panel <select id="momentum-indicator"><option value="rsi">RSI (14)</option><option value="macd">MACD (12, 26, 9)</option><option value="roc">Rate of change (10)</option></select></label><label><input id="show-bb" type="checkbox" checked> Bollinger Bands (20, 2σ)</label><label><input id="show-sma" type="checkbox" checked> SMA (50)</label><label><input id="show-ema" type="checkbox" checked> EMA (20)</label></div>
+        <div id="indicator-chart"></div><div id="indicator-readings" class="indicator-readings" aria-live="polite"></div>
+        <details><summary>How to read these indicators</summary><p>BB uses a 20-observation mean ± two population standard deviations. SMA averages 50 observations; EMA uses a 20-observation seed and exponential smoothing. RSI uses Wilder’s 14-period smoothing (30/70 are reference levels). MACD subtracts EMA 26 from EMA 12, with an EMA 9 signal. ROC is the percentage change over 10 observations. Volatility is the 20-return sample standard deviation of log returns, annualized with √252.</p><p>All calculations use available validated dividend- and split-adjusted closes, with full-history warm-up. Missing observations are not filled; periods count available observations. These describe price behavior, not reliable buy/sell instructions. <a href="https://www.fidelity.com/learning-center/trading-investing/technical-analysis" target="_blank" rel="noopener">Indicator guide ↗</a></p></details>
+      </section>
 
       <section class="model-panel"><div class="panel-heading"><div><p class="eyebrow">COMPARE THE OUTLOOK</p><h2>Archived model snapshot</h2></div><span>Final available point per run · horizons may differ</span></div><div class="table-scroll"><table><thead><tr><th>Model / run</th><th>Horizon</th><th>Projected price</th><th>Comparison status</th></tr></thead><tbody id="model-rows"></tbody></table></div></section>
       <section class="model-panel"><div class="panel-heading"><div><p class="eyebrow">TESTED AGAINST NO CHANGE</p><h2>Adaptive ensemble backtest</h2></div><span id="backtest-date"></span></div><p class="chart-note">Mean absolute log-return error in percentage points; lower is better. Uses dividend-adjusted prices for the accepted subset. This is not a trading-profit measure.</p><div class="table-scroll"><table><thead><tr><th>Trading days</th><th>No-change error</th><th>Adaptive error</th><th>Comparison</th></tr></thead><tbody id="backtest-rows"></tbody></table></div></section>
@@ -258,6 +265,8 @@
   </div>
 
   <script src="/static/config.js?v=20260417-1"></script>
-  <script src="/static/app.js?v=20261006-automation-1"></script>
+  <script src="/static/indicators.js?v=20261006-1"></script>
+  <script src="/static/explorer.js?v=20261006-1"></script>
+  <script src="/static/app.js?v=20261006-charts-1"></script>
 </body>
 </html>

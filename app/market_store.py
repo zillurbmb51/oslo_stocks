@@ -37,6 +37,23 @@ def decode_bundle(raw):
         if any(not isinstance(v,(int,float)) or not math.isfinite(v) or v<=0 for v in closes):
             raise ValueError('Invalid market price')
         if data['coverage'][ticker]['status']!='accepted': raise ValueError('Quarantined series')
+    for ticker, origins in data.get('forecast_comparisons', {}).items():
+        series=data['series'].get(ticker)
+        if not series or len(series.get('adjusted',[]))!=len(series['dates']):
+            raise ValueError('Missing comparison price basis')
+        if any(not isinstance(v,(int,float)) or not math.isfinite(v) or v<=0 for v in series['adjusted']):
+            raise ValueError('Invalid adjusted price')
+        prices=dict(zip(series['dates'],series['adjusted']))
+        for origin in origins:
+            if origin['date'] not in prices or not math.isclose(origin['price'],prices[origin['date']],rel_tol=1e-8):
+                raise ValueError('Forecast origin price mismatch')
+            horizons=set()
+            for horizon,target,value in origin['points']:
+                if horizon not in (1,5,20,30,60,100) or horizon in horizons or target<=origin['date']:
+                    raise ValueError('Invalid forecast target')
+                datetime.fromisoformat(target)
+                if not math.isfinite(value) or value<=0: raise ValueError('Invalid forecast value')
+                horizons.add(horizon)
     if data.get('backtest',{}).get('as_of')!=data['cutoff']: raise ValueError('Mismatched backtest')
     return data
 

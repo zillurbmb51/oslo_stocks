@@ -52,6 +52,19 @@ class MarketStoreTests(unittest.TestCase):
             self.assertEqual(value.source,'validated_snapshot')
             missing=main.get_actual('UNKNOWN');self.assertEqual(missing.prices,[])
             self.assertEqual(missing.validation_status,'unavailable')
+    def test_forecast_comparison_requires_matching_adjusted_origin(self):
+        data=bundle();data['series']['TEST']['adjusted']=[90.]
+        data['forecast_comparisons']={'TEST':[dict(date='2026-01-05',price=90.,points=[[1,'2026-01-06',91.]])]}
+        self.assertEqual(decode_bundle(encode(data))['forecast_comparisons'],data['forecast_comparisons'])
+        data['forecast_comparisons']['TEST'][0]['price']=100.
+        with self.assertRaises(ValueError):decode_bundle(encode(data))
+    def test_explorer_excludes_unknown_ticker_and_uses_adjusted_basis(self):
+        from app import main
+        data=bundle();data['series']['TEST']['adjusted']=[90.]
+        with patch.object(main.STORE,'data',data):
+            self.assertEqual(main.get_explorer('test')['prices'],[90.])
+            self.assertEqual(main.get_explorer('UNKNOWN')['prices'],[])
+            self.assertEqual(main.get_explorer('UNKNOWN')['origins'],[])
     def test_report_and_price_cutoffs_must_match(self):
         data=bundle();data['backtest']['as_of']='2025-01-01'
         with self.assertRaises(ValueError):decode_bundle(encode(data))
