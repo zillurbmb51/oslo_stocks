@@ -192,7 +192,7 @@
   </style>
 
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  <link rel="stylesheet" href="/static/dashboard.css?v=20261019-layout-1" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=20261019-compact-1" />
 </head>
 <body>
   <div class="page">
@@ -201,10 +201,9 @@
       <span class="market-badge">OSLO • RESEARCH WORKSPACE</span>
     </header>
     <main>
-      <section class="hero"><div><p class="eyebrow">OSLO EQUITIES · RESEARCH NOTEBOOK</p><h1>See the company.<br><span>Understand the evidence.</span></h1><p>Company context, observed prices and model evaluation—together in one research workspace.</p><div class="hero-tags"><span>Company profiles</span><span>Price history</span><span>Model evaluation</span></div></div><div class="hero-note"><span class="eyebrow">YOUR RESEARCH UNIVERSE</span><strong id="universe-count">—</strong><span>Oslo tickers to explore</span><small>Choose a company below to begin</small></div></section>
+      <section class="hero compact-masthead"><div><p class="eyebrow">OSLO EQUITIES / RESEARCH DESK</p><h1>Market research, in focus.</h1></div><div class="universe-inline"><strong id="universe-count">—</strong><span>tickers · company profiles & model research</span></div></section>
       <nav class="section-nav" aria-label="Research sections"><a href="#overview">01 Overview</a><a href="#price-research">02 Price & forecasts</a><a href="#decision-panel">03 Research summary</a><a href="#technical-research">04 Indicators</a><a href="#model-evaluation">05 Model evaluation</a></nav>
       <section class="workspace-toolbar" id="overview"><div><p class="eyebrow">EXPLORE THE MARKET</p><h2>Stock overview</h2></div><div class="toolbar-actions"><label><input type="checkbox" id="auto-refresh"> Refresh every 5 min</label><button id="refresh" type="button">↻ Refresh</button></div></section>
-      <section class="automation-panel" aria-label="Automatic market updates"><div class="panel-heading"><div><p class="eyebrow">AUTOMATIC MARKET UPDATES</p><h2 id="data-freshness">Checking data freshness…</h2></div><a href="https://github.com/zillurbmb51/oslo_stocks/actions/workflows/refresh-market-data.yml" target="_blank" rel="noopener">View update runs ↗</a></div><details class="data-details"><summary>Data coverage & validation details</summary><p id="automation-status" role="status">Checking the published snapshot…</p><p id="ticker-quality"></p></details></section>
       <p id="load-status" role="status" aria-live="polite">Loading your workspace…</p>
       <div class="controls-row">
         <label for="ticker-select">Ticker:</label>
@@ -219,14 +218,10 @@
         </select>
       </div>
 
-      <button type="button" id="watch-toggle" aria-pressed="false">☆ Save ticker</button>
+      <div class="selection-actions"><button type="button" id="watch-toggle" aria-pressed="false">☆ Save ticker</button><span>Observed data · research estimates · no live quotes</span></div>
       <div id="watchlist" class="watchlist" aria-label="Saved tickers"></div>
+      <section class="instrument-heading" aria-label="Selected company"><div><p class="eyebrow">COMPANY IN FOCUS</p><h2 id="instrument-name">Choose a company</h2></div><span id="instrument-symbol" class="instrument-symbol">OSL</span></section>
       <section id="metrics" class="metrics" aria-label="Stock metrics"></section>
-      <div class="overview-grid">
-      <section id="company-profile" class="company-profile" aria-label="Company profile" aria-live="polite"><p>Select a ticker to view its company profile.</p></section>
-
-      <section class="insight-panel"><span class="insight-icon">✦</span><div><p class="eyebrow">OBSERVATIONS & LIMITATIONS</p><p id="insight">Select a ticker to compare its observations and archived model estimates.</p></div></section>
-      </div>
       <style>
         #ticker-search {
           background: #fff;
@@ -248,10 +243,17 @@
         }
       </style>
 
+      <div class="market-grid">
       <div class="chart-container price-section" id="price-research">
         <div class="panel-heading"><div><p class="eyebrow">PRICE EXPLORER</p><h2 id="chart-heading">History & forecasts</h2></div><span>Click a legend item to toggle a model</span></div><label for="chart-view">Chart view</label> <select id="chart-view"><option value="combined">History + dated predictions + actuals</option><option value="legacy">Archived model projections</option></select><div class="explorer-controls" id="forecast-controls"><label>Forecast origin <select id="forecast-origin"></select></label><label>History window <select id="history-window"><option value="63">3 months</option><option value="126" selected>6 months</option><option value="252">1 year</option><option value="all">All history</option></select></label></div><div id="chart"></div><p id="forecast-insight" class="reading" aria-live="polite"></p><div class="table-scroll"><table id="outcomes-table"><thead><tr><th>Trading days</th><th>Target date</th><th>Prediction</th><th>Actual</th><th>Error vs actual</th></tr></thead><tbody id="outcome-rows"></tbody></table></div><p class="chart-note" id="chart-note">Daily closing prices are split-adjusted and quoted in NOK.</p>
       </div>
 
+      <aside class="company-sidebar">
+      <section id="company-profile" class="company-profile" aria-label="Company profile" aria-live="polite"><p>Select a ticker to view its company profile.</p></section>
+
+      <section class="insight-panel"><span class="insight-icon">✦</span><div><p class="eyebrow">OBSERVATIONS & LIMITATIONS</p><p id="insight">Select a ticker to compare its observations and archived model estimates.</p></div></section>      <section class="automation-panel" aria-label="Automatic market updates"><div class="panel-heading"><div><p class="eyebrow">AUTOMATIC MARKET UPDATES</p><h2 id="data-freshness">Checking data freshness…</h2></div><a href="https://github.com/zillurbmb51/oslo_stocks/actions/workflows/refresh-market-data.yml" target="_blank" rel="noopener">View update runs ↗</a></div><details class="data-details"><summary>Data coverage & validation details</summary><p id="automation-status" role="status">Checking the published snapshot…</p><p id="ticker-quality"></p></details></section>
+      </aside>
+      </div>
       <section id="decision-panel" class="decision-panel" aria-label="Decision support" data-tone="neutral">
         <p class="eyebrow">RESEARCH SUMMARY · INTERPRETING THE EVIDENCE</p>
         <h2 id="decision-title" aria-live="polite">Building your research summary…</h2>
@@ -267,8 +269,10 @@
         <details><summary>How to read these indicators</summary><p>BB uses a 20-observation mean ± two population standard deviations. SMA averages 50 observations; EMA uses a 20-observation seed and exponential smoothing. RSI uses Wilder’s 14-period smoothing (30/70 are reference levels). MACD subtracts EMA 26 from EMA 12, with an EMA 9 signal. ROC is the percentage change over 10 observations. Volatility is the 20-return sample standard deviation of log returns, annualized with √252.</p><p>All calculations use available validated dividend- and split-adjusted closes, with full-history warm-up. Missing observations are not filled; periods count available observations. These describe price behavior, not reliable buy/sell instructions. <a href="https://www.fidelity.com/learning-center/trading-investing/technical-analysis" target="_blank" rel="noopener">Indicator guide ↗</a></p></details>
       </section>
 
+      <div class="evaluation-grid">
       <section id="model-evaluation" class="model-panel archive-section"><div class="panel-heading"><div><p class="eyebrow">COMPARE THE OUTLOOK</p><h2>Archived model snapshot</h2></div><span>Final available point per run · horizons may differ</span></div><div class="table-scroll"><table><thead><tr><th>Model / run</th><th>Horizon</th><th>Projected price</th><th>Comparison status</th></tr></thead><tbody id="model-rows"></tbody></table></div></section>
       <section class="model-panel backtest-section"><div class="panel-heading"><div><p class="eyebrow">TESTED AGAINST NO CHANGE</p><h2>Adaptive ensemble backtest</h2></div><span id="backtest-date"></span></div><p class="chart-note">Mean absolute log-return error in percentage points; lower is better. Uses dividend-adjusted prices for the accepted subset. This is not a trading-profit measure.</p><div class="table-scroll"><table><thead><tr><th>Trading days</th><th>No-change error</th><th>Adaptive error</th><th>Comparison</th></tr></thead><tbody id="backtest-rows"></tbody></table></div></section>
+      </div>
       <h2 class="commentary-heading">Archived model commentary</h2>
       <p class="chart-note">Historical model narratives below are not refreshed with current prices. Use the dated decision-support summary above for current technical readings.</p>
       <div id="commentary">
@@ -283,7 +287,7 @@
   <script src="/static/decision-insights.js?v=20261006-1"></script>
   <script src="/static/explorer.js?v=20261019-research-1"></script>
   <script src="/static/company-profile-data.js?v=20261019-all-1"></script>
-  <script src="/static/company-profiles.js?v=20261019-all-1"></script>
+  <script src="/static/company-profiles.js?v=20261019-compact-1"></script>
   <script src="/static/app.js?v=20261019-research-1"></script>
 </body>
 </html>

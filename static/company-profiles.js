@@ -13,6 +13,8 @@
         const node=document.createElement('a'); node.href=url; node.textContent=text; node.target='_blank'; node.rel='noopener noreferrer'; parent.append(node);
       };
       const profile=profiles[key(ticker)];
+      document.getElementById('instrument-name').textContent=profile?.name || ticker;
+      document.getElementById('instrument-symbol').textContent=ticker;
       add('p','COMPANY PROFILE','eyebrow');
       add('h2',profile ? `${profile.name} · ${ticker}` : ticker);
       if (!profile) {
