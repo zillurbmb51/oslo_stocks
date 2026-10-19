@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>MyStocks OSL – Forecasts & Commentary</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0a1830" />
+  <meta name="theme-color" content="#f5f6f7" />
   <link rel="manifest" href="/static/manifest.webmanifest" />
 
   <style>
@@ -192,7 +192,7 @@
   </style>
 
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  <link rel="stylesheet" href="/static/dashboard.css?v=20261006-insights-1" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=20261019-research-1" />
 </head>
 <body>
   <div class="page">
@@ -201,7 +201,7 @@
       <span class="market-badge">OSLO • RESEARCH WORKSPACE</span>
     </header>
     <main>
-      <section class="hero"><div><p class="eyebrow">YOUR MARKET, IN PERSPECTIVE</p><h1>Less noise.<br><span>More perspective.</span></h1><p>Explore price history, compare model forecasts, and build your own watchlist.</p></div><div class="hero-note"><span class="eyebrow">A CLEARER VIEW</span><strong id="universe-count">—</strong><span>Oslo tickers to explore</span><small>Historical data & model projections</small></div></section>
+      <section class="hero"><div><p class="eyebrow">OSLO EQUITIES · RESEARCH</p><h1>Equity research<br><span>& model evaluation</span></h1><p>Explore price history, compare model forecasts, and build your own watchlist.</p></div><div class="hero-note"><span class="eyebrow">DATASET COVERAGE</span><strong id="universe-count">—</strong><span>Oslo tickers to explore</span><small>Historical data & model projections</small></div></section>
       <section class="workspace-toolbar"><div><p class="eyebrow">EXPLORE THE MARKET</p><h2>Stock overview</h2></div><div class="toolbar-actions"><label><input type="checkbox" id="auto-refresh"> Refresh every 5 min</label><button id="refresh" type="button">↻ Refresh</button></div></section>
       <section class="automation-panel" aria-label="Automatic market updates"><div class="panel-heading"><div><p class="eyebrow">AUTOMATIC MARKET UPDATES</p><h2 id="data-freshness">Checking data freshness…</h2></div><a href="https://github.com/zillurbmb51/oslo_stocks/actions/workflows/refresh-market-data.yml" target="_blank" rel="noopener">View update runs ↗</a></div><p id="automation-status" role="status">Checking the published snapshot…</p><p id="ticker-quality"></p></section>
       <p id="load-status" role="status" aria-live="polite">Loading your workspace…</p>
@@ -210,7 +210,7 @@
         <input
           id="ticker-search"
           type="text"
-          placeholder="Search ticker…" aria-label="Search ticker"
+          placeholder="Search ticker or company…" aria-label="Search ticker or company"
           autocomplete="off"
         />
         <select id="ticker-select">
@@ -220,6 +220,7 @@
 
       <button type="button" id="watch-toggle" aria-pressed="false">☆ Save ticker</button>
       <div id="watchlist" class="watchlist" aria-label="Saved tickers"></div>
+      <section id="company-profile" class="company-profile" aria-label="Company profile" aria-live="polite"><p>Select a ticker to view its company profile.</p></section>
       <section id="metrics" class="metrics" aria-label="Stock metrics"></section>
       <section class="insight-panel"><span class="insight-icon">✦</span><div><p class="eyebrow">THE DATA AT A GLANCE</p><p id="insight">Select a ticker to explore its model outlook.</p></div></section>
       <section id="decision-panel" class="decision-panel" aria-label="Decision support" data-tone="neutral">
@@ -232,7 +233,7 @@
       </section>
       <style>
         #ticker-search {
-          background: linear-gradient(180deg, rgba(14, 31, 55, 0.98), rgba(8, 18, 34, 0.98));
+          background: #fff;
           color: var(--text);
           border-radius: 0.5rem;
           border: 1px solid var(--border);
@@ -276,7 +277,8 @@
   <script src="/static/config.js?v=20260417-1"></script>
   <script src="/static/indicators.js?v=20261006-1"></script>
   <script src="/static/decision-insights.js?v=20261006-1"></script>
-  <script src="/static/explorer.js?v=20261006-insights-1"></script>
-  <script src="/static/app.js?v=20261006-insights-1"></script>
+  <script src="/static/explorer.js?v=20261019-research-1"></script>
+  <script src="/static/company-profiles.js?v=20261019-2"></script>
+  <script src="/static/app.js?v=20261019-research-1"></script>
 </body>
 </html>

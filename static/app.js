@@ -81,10 +81,7 @@ function renderInsights(ticker, forecast, history, actual) {
 }
 
 function getColor(idx) {
-  const palette = [
-    "#38bdf8", "#f97316", "#22c55e", "#eab308", "#a855f7",
-    "#ec4899", "#14b8a6", "#4ade80", "#facc15", "#ef4444",
-  ];
+  const palette = window.ResearchPalette;
   return palette[idx % palette.length];
 }
 
@@ -134,7 +131,7 @@ function renderTickerOptions(selectedTicker) {
 
   const filtered = !query
     ? sorted
-    : sorted.filter((item) => String(item.ticker).toUpperCase().includes(query));
+    : sorted.filter((item) => `${item.ticker} ${window.CompanyProfiles?.name(item.ticker) || ""}`.toUpperCase().includes(query));
 
   if (filtered.length && !filtered.some(item => item.ticker === selectedTicker)) {
     const prompt = document.createElement("option");
@@ -147,7 +144,7 @@ function renderTickerOptions(selectedTicker) {
   filtered.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.ticker;
-    option.textContent = `${item.ticker} · ${item.validation_status === "accepted" ? "Validated prices" : item.validation_status || "Legacy data"}`;
+    option.textContent = `${item.ticker}${window.CompanyProfiles?.name(item.ticker) ? " · " + window.CompanyProfiles.name(item.ticker) : ""} · ${item.validation_status === "accepted" ? "Validated prices" : item.validation_status || "Legacy data"}`;
     if (item.ticker === selectedTicker) {
       option.selected = true;
     }
@@ -271,6 +268,7 @@ async function updateCommentary(ticker, version) {
 async function updateTicker(ticker) {
   const version = ++requestVersion;
   activeTicker = ticker;
+  window.CompanyProfiles.render(ticker);
   busy = true;
   persist("osl-ticker", ticker);
   renderWatchlist();
@@ -338,7 +336,7 @@ tickerSearch?.addEventListener("keydown", async (event) => {
   if (!query) return;
 
   const sorted = sortTickerMetrics(tickerMetrics);
-  const filtered = sorted.filter((item) => String(item.ticker).toUpperCase().includes(query));
+  const filtered = sorted.filter((item) => `${item.ticker} ${window.CompanyProfiles?.name(item.ticker) || ""}`.toUpperCase().includes(query));
   if (!filtered.length) return;
 
   const first = filtered[0].ticker;
