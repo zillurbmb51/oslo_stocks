@@ -13,6 +13,7 @@ function setup() {
   }
   const elements = new Map();
   const context = vm.createContext({console, URL, document:{getElementById(id){if(!elements.has(id))elements.set(id,new Node());return elements.get(id)},createElement(){return new Node()}},window:{location:{origin:''},addEventListener(){}},localStorage:{getItem(){return null},setItem(){}},setInterval(){},setTimeout(){}});
+  vm.runInContext(fs.readFileSync('static/company-profile-data.js','utf8'),context);
   vm.runInContext(fs.readFileSync('static/company-profiles.js','utf8'),context);
   vm.runInContext(fs.readFileSync('static/app.js','utf8').replace('\nloadTickers();',''),context);
   return {context,elements};
@@ -39,11 +40,25 @@ test('company profile resolves suffixes and clears previous company for missing 
  const {context,elements}=setup();
  vm.runInContext("window.CompanyProfiles.render('VEI.OL')",context);
  const panel=elements.get('company-profile');
- assert.equal(panel.children[1].textContent,'Veidekke · VEI.OL');
- assert.equal(panel.children[4].children[0].href,'https://www.veidekke.com/about-veidekke/');
- assert.equal(panel.children[5].children[0].href,'https://www.veidekke.com/');
+ assert.equal(panel.children[1].textContent,'Veidekke ASA · VEI.OL');
+ assert.equal(panel.children[4].children[0].href,'https://www.veidekke.com');
+ assert.equal(panel.children[5].children[0].href,'https://stockanalysis.com/quote/osl/VEI/company/');
  vm.runInContext("window.CompanyProfiles.render('UNKNOWN')",context);
  assert.equal(panel.children[1].textContent,'UNKNOWN');
- assert.match(panel.children[2].textContent,/not yet available/);
- assert.equal(panel.children.length,4);
+ assert.match(panel.children[2].textContent,/not in the current company directory/);
+ assert.equal(panel.children.length,3);
+});
+
+test('all 197 directory tickers have renderable profiles and secure homepage links',()=>{
+ const {context,elements}=setup();
+ const tickers=vm.runInContext('Object.keys(window.CompanyProfileData)',context);
+ assert.equal(tickers.length,197);
+ for(const ticker of tickers){
+  vm.runInContext(`window.CompanyProfiles.render(${JSON.stringify(ticker)})`,context);
+  const panel=elements.get('company-profile');
+  assert.match(panel.children[1].textContent,new RegExp(ticker));
+  assert.ok(panel.children[2].textContent.length>30);
+  assert.ok(panel.children[4].children[0].href.startsWith('https://'));
+ }
+ assert.equal(vm.runInContext("window.CompanyProfiles.name('BEWI.OL')",context),'BEWI ASA');
 });
